@@ -62,8 +62,12 @@ class VC(object):
         return os.path.exists(os.path.join(start, self.metadir))
 
     def runCmd(self, cmd, argv):
-        sys.exit(os.system("%s %s %s" %
-                           (self.metacmd, self.cmds[cmd], " ".join(argv))))
+        if isinstance(cmd, int):
+            sys.exit(os.system("%s %s %s" %
+                               (self.metacmd, self.cmds[cmd], " ".join(argv))))
+        else:
+            sys.exit(os.system("%s %s %s" %
+                               (self.metacmd, cmd, " ".join(argv))))
 
 
 HG = VC("hg", ".hg", True, "hg",
@@ -109,8 +113,6 @@ else:
 
 try:
     cmd = CMDS[cmd]
-except:
-    print "Invalid command"
-    sys.exit(1)
-
-vc.runCmd(cmd, sys.argv[2:])
+    vc.runCmd(cmd, sys.argv[2:])
+except Exception, e:
+    vc.runCmd(cmd, sys.argv[2:])
