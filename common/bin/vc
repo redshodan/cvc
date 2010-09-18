@@ -1,0 +1,116 @@
+#!/usr/bin/env python
+
+#
+# Ideas:
+#
+# - check for pending changes in the repo. 'svn stat -u'
+# - less a particular file without having to 'check it out'. co in the background
+# - backup
+# - location/path
+# 
+# - filter out cvs and gits stupid outputs
+#
+
+import os, sys
+
+
+CMD_STATUS = 0
+CMD_CLONE = 1
+CMD_COMMIT = 2
+CMD_ADD = 3
+CMD_REMOVE = 4
+CMD_LOG = 5
+CMD_REVERT = 6
+CMD_UPDATE = 7
+CMD_PULL = 8
+CMD_PUSH = 9
+
+# Yeah a trie would be better, but its really not required and I dont feel like
+# making one, so there.
+CMDS = {
+    "status" : CMD_STATUS,
+    "stat" : CMD_STATUS,
+    "s" : CMD_STATUS,
+    "clone" : CMD_CLONE,
+    "co" : CMD_CLONE,
+    "commit" : CMD_COMMIT,
+    "com" : CMD_COMMIT,
+    "ci" : CMD_COMMIT,
+    "add" : CMD_ADD,
+    "a" : CMD_ADD,
+    "remove" : CMD_REMOVE,
+    "rem" : CMD_REMOVE,
+    "del" : CMD_REMOVE,
+    "log" : CMD_LOG,
+    "revert" : CMD_REVERT,
+    "update" : CMD_UPDATE,
+    "up" : CMD_UPDATE,
+    "pull" : CMD_PULL,
+    "push" : CMD_PUSH,
+    }
+
+
+class VC(object):
+    def __init__(self, name, metadir, toponly, metacmd, cmds):
+        self.name = name
+        self.metadir = metadir
+        self.toponly = toponly
+        self.metacmd = metacmd
+        self.cmds = cmds
+
+    def testPath(self, start):
+        return os.path.exists(os.path.join(start, self.metadir))
+
+    def runCmd(self, cmd, argv):
+        sys.exit(os.system("%s %s %s" %
+                           (self.metacmd, self.cmds[cmd], " ".join(argv))))
+
+
+HG = VC("hg", ".hg", True, "hg",
+        ["status", "clone", "commit", "add", "remove", "log", "revert", "update",
+         "pull", "push"])
+GIT = VC("git", ".git", True, "git",
+         ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
+          "pull", "fetch", "push"])
+SVN = VC("svn", ".svn", False, "svn",
+         ["status", "checkout", "commit", "add", "remove", "log", "revert",
+          "update", "update", "commit"])
+CVS = VC("cvs", "CVS", False, "cvs",
+         ["status", "checkout", "commit", "add", "remove", "log", "update -C",
+          "update", "update", "commit"])
+
+VCS = [HG, GIT, SVN, CVS]
+
+
+def detectVC():
+    start = os.getcwd()
+    for vc in VCS:
+        if vc.toponly:
+            if recurseDetectVC(start, vc):
+                return vc
+        elif vc.testPath(start):
+            return vc
+
+def recurseDetectVC(start, vc):
+    path = start.split(os.sep)
+    for idx in range(0, len(path)):
+        if vc.testPath(os.sep.join(path[:-idx])):
+            return True
+
+vc = detectVC()
+if not vc:
+    print "Unable to detect version control system"
+    sys.exit(1)
+
+if len(sys.argv) > 1:
+    cmd = sys.argv[1]
+else:
+    cmd = "status"
+
+try:
+    cmd = CMDS[cmd]
+except:
+    print "Invalid command"
+    sys.exit(1)
+
+vc.runCmd(cmd, sys.argv[2:])
