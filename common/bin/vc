@@ -11,7 +11,7 @@
 # - filter out cvs and gits stupid outputs
 #
 
-import os, sys
+import os, sys, re, types
 
 
 CMD_STATUS = 0
@@ -24,6 +24,9 @@ CMD_REVERT = 6
 CMD_UPDATE = 7
 CMD_PULL = 8
 CMD_PUSH = 9
+CMD_SYNC = 10
+CMD_PEND = 11
+CMD_URL = 12
 
 # Yeah a trie would be better, but its really not required and I dont feel like
 # making one, so there.
@@ -47,6 +50,10 @@ CMDS = {
     "up" : CMD_UPDATE,
     "pull" : CMD_PULL,
     "push" : CMD_PUSH,
+    "sync" : CMD_SYNC,
+    "pending" : CMD_PEND,
+    "pend" : CMD_PEND,
+    "url" : CMD_URL,
     }
 
 
@@ -63,27 +70,50 @@ class VC(object):
 
     def runCmd(self, cmd, argv):
         if isinstance(cmd, int):
-            sys.exit(os.system("%s %s %s" %
-                               (self.metacmd, self.cmds[cmd], " ".join(argv))))
+            if isinstance(self.cmds[cmd], types.StringType):
+                cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
+            else:
+                self.cmds[cmd](argv)
+                return
         else:
-            sys.exit(os.system("%s %s %s" %
-                               (self.metacmd, cmd, " ".join(argv))))
+            cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
+        sys.exit(os.system(cmd))
 
 
-HG = VC("hg", ".hg", True, "hg",
-        ["status", "clone", "commit", "add", "remove", "log", "revert", "update",
-         "pull", "push"])
-GIT = VC("git", ".git", True, "git",
-         ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
-          "pull", "fetch", "push"])
-SVN = VC("svn", ".svn", False, "svn",
-         ["status", "checkout", "commit", "add", "remove", "log", "revert",
-          "update", "update", "commit"])
-CVS = VC("cvs", "CVS", False, "cvs",
-         ["status", "checkout", "commit", "add", "remove", "log", "update -C",
-          "update", "update", "commit"])
+class SVN(VC):
+    def __init__(self):
+        VC.__init__(self, "svn", ".svn", False, "svn",
+                    ["status", "checkout", "commit", "add", "remove", "log",
+                     "revert", "update", "update", "commit", "SYNC", "status -u",
+                     self.cmdURL])
+        RX_URL = re.compile("://")
+        
+    def cmdURL(self, argv):
+        try:
+            entries = open(".svn/entries", "ro")
+            for line in entries:
+                print line
+        except:
+            print "failed to open file"
 
-VCS = [HG, GIT, SVN, CVS]
+VCS = [
+    ### hg
+    VC("hg", ".hg", True, "hg",
+       ["status", "clone", "commit", "add", "remove", "log", "revert", "update",
+        "pull", "push", "SYNC", "PENDING", "URL"]),
+    ### git
+    VC("git", ".git", True, "git",
+       ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
+        "pull", "fetch", "push", "SYNC", "PENDING", "URL"]),
+    ### svn
+    SVN(),
+    ### cvs
+    VC("cvs", "CVS", False, "cvs",
+       ["status", "checkout", "commit", "add", "remove", "log", "update -C",
+        "update", "update", "commit", "SYNC", "PENDING", "URL"]),
+    ]
+
+# VCS = [HG, GIT, SVN, CVS]
 
 
 def detectVC():
