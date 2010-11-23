@@ -11,7 +11,7 @@
 # - filter out cvs and gits stupid outputs
 #
 
-import os, sys, re, types
+import os, sys, re, types, commands
 
 
 CMD_STATUS = 0
@@ -84,7 +84,9 @@ class VC(object):
     def testPath(self, start):
         return os.path.exists(os.path.join(start, self.metadir))
 
-    def runCmd(self, cmd, argv, noexit):
+    def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
+               capture_output=False):
+        # print "runCmd", cmd, noexit, ignore_ret, capture_output
         if isinstance(cmd, int):
             if isinstance(self.cmds[cmd], types.StringType):
                 cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
@@ -95,7 +97,7 @@ class VC(object):
                         isfirst = False
                         print "Running:", CMD_NAMES[subcmd]
                     else:
-                        print "Continue: %s (Y/n)..." % CMD_NAMES[subcmd], 
+                        print "\nContinue: %s (Y/n) " % CMD_NAMES[subcmd], 
                         ret = sys.stdin.readline()
                         if ((not ret) or (len(ret) == 0) or (ret == "\n") or
                             ret.startswith("y") or ret.startswith("Y")):
@@ -103,7 +105,8 @@ class VC(object):
                         else:
                             print "Exiting early"
                             sys.exit(-1)
-                    if self.runCmd(subcmd, argv, True) != 0:
+                    if self.runCmd(subcmd, argv, True, ignore_ret=ignore_ret,
+                                   capture_output=capture_output) != 0:
                         print "Command failed, exiting early"
                 return
             else:
@@ -111,11 +114,18 @@ class VC(object):
                 return
         else:
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
-        ret = os.system(cmd)
-        if ((not noexit) or (ret != 0)):
-            sys.exit(ret)
+        if capture_output:
+            ret = commands.getstatusoutput(cmd)
+            if ((not noexit) or ((not ignore_ret) and (ret[0] != 0))):
+                sys.exit(ret[0])
+            else:
+                return ret[1]
         else:
-            return ret
+            ret = os.system(cmd)
+            if ((not noexit) or ((not ignore_ret) and (ret != 0))):
+                sys.exit(ret)
+            else:
+                return ret
 
 
 class SVN(VC):
@@ -125,7 +135,7 @@ class SVN(VC):
         VC.__init__(self, "svn", ".svn", False, "svn",
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "revert", "update", "update", "commit",
-                     [CMD_UPDATE, CMD_COMMIT], # SYNC
+                     [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
                      "status -u",
                      self.cmdURL])
         
@@ -139,11 +149,35 @@ class SVN(VC):
         except Exception, e:
             print "failed to open file:", e
 
+class HG(VC):
+    RX_TIP = re.compile("^tip[ \t]+.*")
+
+    def __init__(self):
+        VC.__init__(self, "hg", ".hg", True, "hg",
+                    ["status", "clone", "commit", "add", "remove", "log",
+                     "revert", "update", "pull", "push",
+                     # SYNC
+                     [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
+                     self.cmdPend, "paths"])
+
+    def cmdPend(self, argv):
+        print "Remote pending changesets:"
+        self.runCmd("incoming", argv, True, True)
+        print "\nLocal pending changesets:"
+        rev = int(self.runCmd("identify -n", [], noexit=True,
+                              capture_output=True).strip())
+        ret = self.runCmd("tags", [], noexit=True, capture_output=True)
+        for line in ret.split("\n"):
+            if self.RX_TIP.match(line):
+                words = line.split(" ")
+                tip = int(words[-1:][0].split(":")[0])
+                break
+        if tip >= rev + 1:
+            self.runCmd("log -r %d:tip" % (rev + 1), argv)
+
 VCS = [
     ### hg
-    VC("hg", ".hg", True, "hg",
-       ["status", "clone", "commit", "add", "remove", "log", "revert", "update",
-        "pull", "push", "SYNC", "PENDING", "URL"]),
+    HG(),
     ### git
     VC("git", ".git", True, "git",
        ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
@@ -155,8 +189,6 @@ VCS = [
        ["status", "checkout", "commit", "add", "remove", "log", "update -C",
         "update", "update", "commit", "SYNC", "PENDING", "URL"]),
     ]
-
-# VCS = [HG, GIT, SVN, CVS]
 
 
 def detectVC():
@@ -186,6 +218,6 @@ else:
 
 try:
     cmd = CMDS[cmd]
-    vc.runCmd(cmd, sys.argv[2:], False)
-except Exception, e:
-    vc.runCmd(cmd, sys.argv[2:], False)
+except:
+    pass
+vc.runCmd(cmd, sys.argv[2:])
