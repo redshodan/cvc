@@ -28,6 +28,22 @@ CMD_SYNC = 10
 CMD_PEND = 11
 CMD_URL = 12
 
+CMD_NAMES = {
+    CMD_STATUS : "status",
+    CMD_CLONE : "clone",
+    CMD_COMMIT : "commit",
+    CMD_ADD : "add",
+    CMD_REMOVE : "remove",
+    CMD_LOG : "log",
+    CMD_REVERT : "revert",
+    CMD_UPDATE : "update",
+    CMD_PULL : "pull",
+    CMD_PUSH : "push",
+    CMD_SYNC : "sync",
+    CMD_PEND : "pend",
+    CMD_URL : "url",
+    }
+
 # Yeah a trie would be better, but its really not required and I dont feel like
 # making one, so there.
 CMDS = {
@@ -68,33 +84,60 @@ class VC(object):
     def testPath(self, start):
         return os.path.exists(os.path.join(start, self.metadir))
 
-    def runCmd(self, cmd, argv):
+    def runCmd(self, cmd, argv, noexit):
         if isinstance(cmd, int):
             if isinstance(self.cmds[cmd], types.StringType):
                 cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
+            elif isinstance(self.cmds[cmd], types.ListType):
+                isfirst = True
+                for subcmd in self.cmds[cmd]:
+                    if isfirst:
+                        isfirst = False
+                        print "Running:", CMD_NAMES[subcmd]
+                    else:
+                        print "Continue: %s (Y/n)..." % CMD_NAMES[subcmd], 
+                        ret = sys.stdin.readline()
+                        if ((not ret) or (len(ret) == 0) or (ret == "\n") or
+                            ret.startswith("y") or ret.startswith("Y")):
+                            pass
+                        else:
+                            print "Exiting early"
+                            sys.exit(-1)
+                    if self.runCmd(subcmd, argv, True) != 0:
+                        print "Command failed, exiting early"
+                return
             else:
                 self.cmds[cmd](argv)
                 return
         else:
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
-        sys.exit(os.system(cmd))
+        ret = os.system(cmd)
+        if ((not noexit) or (ret != 0)):
+            sys.exit(ret)
+        else:
+            return ret
 
 
 class SVN(VC):
+    RX_URL = re.compile("://")
+
     def __init__(self):
         VC.__init__(self, "svn", ".svn", False, "svn",
                     ["status", "checkout", "commit", "add", "remove", "log",
-                     "revert", "update", "update", "commit", "SYNC", "status -u",
+                     "revert", "update", "update", "commit",
+                     [CMD_UPDATE, CMD_COMMIT], # SYNC
+                     "status -u",
                      self.cmdURL])
-        RX_URL = re.compile("://")
         
     def cmdURL(self, argv):
         try:
             entries = open(".svn/entries", "ro")
             for line in entries:
-                print line
-        except:
-            print "failed to open file"
+                if self.RX_URL.search(line):
+                    print line.strip()
+                    break
+        except Exception, e:
+            print "failed to open file:", e
 
 VCS = [
     ### hg
@@ -143,6 +186,6 @@ else:
 
 try:
     cmd = CMDS[cmd]
-    vc.runCmd(cmd, sys.argv[2:])
+    vc.runCmd(cmd, sys.argv[2:], False)
 except Exception, e:
-    vc.runCmd(cmd, sys.argv[2:])
+    vc.runCmd(cmd, sys.argv[2:], False)
