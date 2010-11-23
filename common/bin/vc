@@ -3,30 +3,20 @@
 #
 # Ideas:
 #
-# - check for pending changes in the repo. 'svn stat -u'
 # - less a particular file without having to 'check it out'. co in the background
-# - backup
 # - location/path
+# - finish out the root/meta path stuff
+# - doc cmdline args, do help
 # 
-# - filter out cvs and gits stupid outputs
+# - filter out cvs and gits verbose outputs
 #
 
 import os, sys, re, types, commands
 
 
-CMD_STATUS = 0
-CMD_CLONE = 1
-CMD_COMMIT = 2
-CMD_ADD = 3
-CMD_REMOVE = 4
-CMD_LOG = 5
-CMD_REVERT = 6
-CMD_UPDATE = 7
-CMD_PULL = 8
-CMD_PUSH = 9
-CMD_SYNC = 10
-CMD_PEND = 11
-CMD_URL = 12
+(CMD_STATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG, CMD_REVERT,
+ CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL, CMD_BACKUP,
+ CMD_DIFF) = range(0, 15)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
@@ -42,6 +32,8 @@ CMD_NAMES = {
     CMD_SYNC : "sync",
     CMD_PEND : "pend",
     CMD_URL : "url",
+    CMD_BACKUP : "backup",
+    CMD_DIFF : "diff",
     }
 
 # Yeah a trie would be better, but its really not required and I dont feel like
@@ -70,6 +62,9 @@ CMDS = {
     "pending" : CMD_PEND,
     "pend" : CMD_PEND,
     "url" : CMD_URL,
+    "backup" : CMD_BACKUP,
+    "bkup" : CMD_BACKUP,
+    "diff" : CMD_DIFF,
     }
 
 
@@ -86,7 +81,6 @@ class VC(object):
 
     def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
                capture_output=False):
-        # print "runCmd", cmd, noexit, ignore_ret, capture_output
         if isinstance(cmd, int):
             if isinstance(self.cmds[cmd], types.StringType):
                 cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
@@ -136,8 +130,7 @@ class SVN(VC):
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "revert", "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
-                     "status -u",
-                     self.cmdURL])
+                     "status -u", self.cmdURL, self.cmdBackup, "diff"])
         
     def cmdURL(self, argv):
         try:
@@ -149,6 +142,19 @@ class SVN(VC):
         except Exception, e:
             print "failed to open file:", e
 
+    def cmdBackup(self, argv):
+        ret = self.runCmd("info", [], noexit=True, capture_output=True)
+        rev = None
+        for line in ret.split("\n"):
+            if line.startswith("Revision: "):
+                words = line.split(":")
+                rev = words[1].strip()
+                break
+        bkup = "backup-%s.diff" % rev
+        self.runCmd("diff > %s" % bkup, [], noexit=True)
+        print "Backed up to:", bkup
+
+
 class HG(VC):
     RX_TIP = re.compile("^tip[ \t]+.*")
 
@@ -158,14 +164,15 @@ class HG(VC):
                      "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
-                     self.cmdPend, "paths"])
+                     self.cmdPend, "paths", "BACKUP", "diff"])
 
     def cmdPend(self, argv):
         print "Remote pending changesets:"
         self.runCmd("incoming", argv, True, True)
         print "\nLocal pending changesets:"
-        rev = int(self.runCmd("identify -n", [], noexit=True,
-                              capture_output=True).strip())
+        rev = self.runCmd("identify -n", [], noexit=True,
+                          capture_output=True).strip()
+        rev = int(rev.rstrip("+"))
         ret = self.runCmd("tags", [], noexit=True, capture_output=True)
         for line in ret.split("\n"):
             if self.RX_TIP.match(line):
@@ -175,19 +182,21 @@ class HG(VC):
         if tip >= rev + 1:
             self.runCmd("log -r %d:tip" % (rev + 1), argv)
 
+
 VCS = [
     ### hg
     HG(),
     ### git
     VC("git", ".git", True, "git",
        ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
-        "pull", "fetch", "push", "SYNC", "PENDING", "URL"]),
+        "pull", "fetch", "push", "SYNC", "PENDING", "URL", "BACKUP", "diff"]),
     ### svn
     SVN(),
     ### cvs
     VC("cvs", "CVS", False, "cvs",
        ["status", "checkout", "commit", "add", "remove", "log", "update -C",
-        "update", "update", "commit", "SYNC", "PENDING", "URL"]),
+        "update", "update", "commit", "SYNC", "PENDING", "URL", "BACKUP",
+        "diff"]),
     ]
 
 
