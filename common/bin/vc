@@ -16,7 +16,7 @@ import os, sys, re, types, commands, stat
 
 (CMD_STATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG, CMD_REVERT,
  CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL, CMD_BACKUP,
- CMD_DIFF) = range(0, 15)
+ CMD_DIFF, CMD_TOP) = range(0, 16)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
@@ -34,6 +34,7 @@ CMD_NAMES = {
     CMD_URL : "url",
     CMD_BACKUP : "backup",
     CMD_DIFF : "diff",
+    CMD_TOP : "top",
     }
 
 # Yeah a trie would be better, but its really not required and I dont feel like
@@ -66,41 +67,77 @@ CMDS = {
     "backup" : CMD_BACKUP,
     "bkup" : CMD_BACKUP,
     "diff" : CMD_DIFF,
+    "top" : CMD_TOP,
     }
 
 
 class VC(object):
     VCS = []
 
-    def __init__(self, name, metadir, toponly, metacmd, cmds):
+    def __init__(self, name, metadir, metacmd, cmds):
         self.name = name
         self.metadir = metadir
-        self.toponly = toponly
         self.metacmd = metacmd
         self.cmds = cmds
+        self.topdir = None
 
     @staticmethod
-    def detectVC():
+    def detectVC(cmd):
+        if cmd == CMD_CLONE:
+            return VC.detectVCByUrl(cmd)
+        else:
+            return VC.detectVCByPath()
+
+    @staticmethod
+    def detectVCByUrl(cmd):
+        return
+
+    @staticmethod
+    def detectVCByPath():
+        def recurseDetectVC(start, vc):
+            last = None
+            path = start.split(os.sep)
+            for idx in range(0, len(path)):
+                if idx == 0:
+                    cur = os.sep.join(path)
+                else:
+                    cur = os.sep.join(path[:-idx])
+                if vc.testPath(cur):
+                    last = cur
+                elif last:
+                    return last
+            return None
         start = os.getcwd()
         for vc in VC.VCS:
-            if vc.toponly:
-                if VC.recurseDetectVC(start, vc):
-                    return vc
-            elif vc.testPath(start):
+            top = None
+            last = None
+            path = start.split(os.sep)
+            for idx in range(0, len(path)):
+                if idx == 0:
+                    cur = os.sep.join(path)
+                else:
+                    cur = os.sep.join(path[:-idx])
+                if vc.testPath(cur):
+                    last = cur
+                elif last:
+                    top = last
+                    break
+            if top:
+                vc.topdir = top
                 return vc
 
-    @staticmethod
-    def recurseDetectVC(start, vc):
-        path = start.split(os.sep)
-        for idx in range(0, len(path)):
-            if vc.testPath(os.sep.join(path[:-idx])):
-                return True
-
+    def matchURL(self, url):
+        pass
+    
+    def extractURL(self, url):
+        pass
+    
     def testPath(self, start):
         return os.path.exists(os.path.join(start, self.metadir))
 
     def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
                capture_output=False):
+        orgcmd = cmd
         if isinstance(cmd, int):
             if isinstance(self.cmds[cmd], types.StringType):
                 cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
@@ -130,6 +167,7 @@ class VC(object):
                 return
         else:
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
+        cmd = self.filterCmd(cmd, orgcmd)
         if capture_output:
             ret = commands.getstatusoutput(cmd)
             if ((not noexit) or ((not ignore_ret) and (ret[0] != 0))):
@@ -143,6 +181,9 @@ class VC(object):
             else:
                 return ret
 
+    def filterCmd(self, cmd, orgcmd):
+        return cmd
+        
     def backupFile(self, path):
         tpath = path
         index = None
@@ -164,16 +205,20 @@ class VC(object):
                 index = index + 1
         return path.replace("%s", "")
 
+    def cmdTop(self, argv):
+        print self.topdir
+
 
 class SVN(VC):
     RX_URL = re.compile("://")
 
     def __init__(self):
-        VC.__init__(self, "svn", ".svn", False, "svn",
+        VC.__init__(self, "svn", ".svn", "svn",
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "revert", "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
-                     "status -u", ("svnpath",), self.cmdBackup, "diff"])
+                     "status -u", ("svnpath",), self.cmdBackup, "diff",
+                     self.cmdTop])
 
     def cmdBackup(self, argv):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
@@ -191,14 +236,23 @@ class SVN(VC):
 
 class HG(VC):
     RX_TIP = re.compile("^tip[ \t]+.*")
+    URL_PREFIX = "hg://"
 
     def __init__(self):
-        VC.__init__(self, "hg", ".hg", True, "hg",
+        VC.__init__(self, "hg", ".hg", "hg",
                     ["status", "clone", "commit", "add", "remove", "log",
                      "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
-                     self.cmdPend, "paths", self.cmdBackup, "diff"])
+                     self.cmdPend, "paths", self.cmdBackup, "diff", self.cmdTop])
+
+    def matchURL(self, url):
+        if url.startswith(self.URL_PREFIX):
+            return True
+        return False
+    
+    def extractURL(self, url):
+        return url.lstrip(self.URL_PREFIX)
 
     def cmdPend(self, argv):
         print "Remote pending changesets:"
@@ -225,29 +279,24 @@ class HG(VC):
 
 class GIT(VC):
     def __init__(self):
-        VC.__init__(self, "git", ".git", True, "git",
+        VC.__init__(self, "git", ".git", "git",
                     ["status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
-                     "URL", "BACKUP", "diff"])
+                     "URL", "BACKUP", "diff", self.cmdTop])
 
 
 class CVS(VC):
     def __init__(self):
-        VC.__init__(self, "cvs", "CVS", False, "cvs",
+        VC.__init__(self, "cvs", "CVS", "cvs",
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "update -C", "update", "update", "commit", "SYNC",
-                     "PENDING", "URL", "BACKUP", "diff"])
+                     "PENDING", "URL", "BACKUP", "diff", self.cmdTop])
 
 
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
 
 if __name__ == '__main__':
-    vc = VC.detectVC()
-    if not vc:
-        print "Unable to detect version control system"
-        sys.exit(1)
-
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
     else:
@@ -255,6 +304,11 @@ if __name__ == '__main__':
 
     try:
         cmd = CMDS[cmd]
-    except:
+        vc = VC.detectVC(cmd)
+        os.chdir(vc.topdir)
+        if not vc:
+            print "Unable to detect version control system"
+            sys.exit(1)
+    except IndexError:
         pass
     vc.runCmd(cmd, sys.argv[2:])
