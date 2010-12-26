@@ -11,7 +11,7 @@
 # - filter out cvs and gits verbose outputs
 #
 
-import os, sys, re, types, commands
+import os, sys, re, types, commands, stat
 
 
 (CMD_STATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG, CMD_REVERT,
@@ -121,6 +121,26 @@ class VC(object):
             else:
                 return ret
 
+    def backupFile(self, path):
+        tpath = path
+        index = None
+        while True:
+            if index is None:
+                tpath = path.replace("%s", "")
+            else:
+                tpath = path % ("-%d" % index)
+            try:
+                ret = os.stat(tpath)
+            except OSError, e:
+                if e.errno == 2:
+                    return tpath.replace("%s", "")
+                else:
+                    raise e
+            if index is None:
+                index = 0
+            else:
+                index = index + 1
+        return path.replace("%s", "")
 
 class SVN(VC):
     RX_URL = re.compile("://")
@@ -150,9 +170,10 @@ class SVN(VC):
                 words = line.split(":")
                 rev = words[1].strip()
                 break
-        bkup = "backup-%s.diff" % rev
-        self.runCmd("diff > %s" % bkup, [], noexit=True)
-        print "Backed up to:", bkup
+        path = "backup-%s" % rev
+        path = self.backupFile(path + "%s.diff")
+        self.runCmd("diff > %s" % path, [], noexit=True)
+        print "Backed up to:", path
 
 
 class HG(VC):
@@ -164,7 +185,7 @@ class HG(VC):
                      "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
-                     self.cmdPend, "paths", "BACKUP", "diff"])
+                     self.cmdPend, "paths", self.cmdBackup, "diff"])
 
     def cmdPend(self, argv):
         print "Remote pending changesets:"
@@ -182,6 +203,11 @@ class HG(VC):
         if tip >= rev + 1:
             self.runCmd("log -r %d:tip" % (rev + 1), argv)
 
+    def cmdBackup(self, argv):
+        ret = self.runCmd("identify -n", [], noexit=True, capture_output=True)
+        path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
+        self.runCmd("diff > %s" % path, [], noexit=True)
+        print path
 
 VCS = [
     ### hg
