@@ -69,12 +69,31 @@ CMDS = {
 
 
 class VC(object):
+    VCS = []
+
     def __init__(self, name, metadir, toponly, metacmd, cmds):
         self.name = name
         self.metadir = metadir
         self.toponly = toponly
         self.metacmd = metacmd
         self.cmds = cmds
+
+    @staticmethod
+    def detectVC():
+        start = os.getcwd()
+        for vc in VC.VCS:
+            if vc.toponly:
+                if VC.recurseDetectVC(start, vc):
+                    return vc
+            elif vc.testPath(start):
+                return vc
+
+    @staticmethod
+    def recurseDetectVC(start, vc):
+        path = start.split(os.sep)
+        for idx in range(0, len(path)):
+            if vc.testPath(os.sep.join(path[:-idx])):
+                return True
 
     def testPath(self, start):
         return os.path.exists(os.path.join(start, self.metadir))
@@ -142,6 +161,7 @@ class VC(object):
                 index = index + 1
         return path.replace("%s", "")
 
+
 class SVN(VC):
     RX_URL = re.compile("://")
 
@@ -174,6 +194,7 @@ class SVN(VC):
         path = self.backupFile(path + "%s.diff")
         self.runCmd("diff > %s" % path, [], noexit=True)
         print "Backed up to:", path
+VC.VCS.append(SVN())
 
 
 class HG(VC):
@@ -208,51 +229,40 @@ class HG(VC):
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
         self.runCmd("diff > %s" % path, [], noexit=True)
         print path
-
-VCS = [
-    ### hg
-    HG(),
-    ### git
-    VC("git", ".git", True, "git",
-       ["status", "clone", "commit", "add", "rm", "log", "reset --hard",
-        "pull", "fetch", "push", "SYNC", "PENDING", "URL", "BACKUP", "diff"]),
-    ### svn
-    SVN(),
-    ### cvs
-    VC("cvs", "CVS", False, "cvs",
-       ["status", "checkout", "commit", "add", "remove", "log", "update -C",
-        "update", "update", "commit", "SYNC", "PENDING", "URL", "BACKUP",
-        "diff"]),
-    ]
+VC.VCS.append(HG())
 
 
-def detectVC():
-    start = os.getcwd()
-    for vc in VCS:
-        if vc.toponly:
-            if recurseDetectVC(start, vc):
-                return vc
-        elif vc.testPath(start):
-            return vc
+class GIT(VC):
+    def __init__(self):
+        VC.__init__(self, "git", ".git", True, "git",
+                    ["status", "clone", "commit", "add", "rm", "log",
+                     "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
+                     "URL", "BACKUP", "diff"])
+VC.VCS.append(GIT())
 
-def recurseDetectVC(start, vc):
-    path = start.split(os.sep)
-    for idx in range(0, len(path)):
-        if vc.testPath(os.sep.join(path[:-idx])):
-            return True
 
-vc = detectVC()
-if not vc:
-    print "Unable to detect version control system"
-    sys.exit(1)
+class CVS(VC):
+    def __init__(self):
+        VC.__init__(self, "cvs", "CVS", False, "cvs",
+                    ["status", "checkout", "commit", "add", "remove", "log",
+                     "update -C", "update", "update", "commit", "SYNC",
+                     "PENDING", "URL", "BACKUP", "diff"])
+VC.VCS.append(CVS())
 
-if len(sys.argv) > 1:
-    cmd = sys.argv[1]
-else:
-    cmd = "status"
 
-try:
-    cmd = CMDS[cmd]
-except:
-    pass
-vc.runCmd(cmd, sys.argv[2:])
+if __name__ == '__main__':
+    vc = VC.detectVC()
+    if not vc:
+        print "Unable to detect version control system"
+        sys.exit(1)
+
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
+    else:
+        cmd = "status"
+
+    try:
+        cmd = CMDS[cmd]
+    except:
+        pass
+    vc.runCmd(cmd, sys.argv[2:])
