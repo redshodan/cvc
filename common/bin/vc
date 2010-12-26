@@ -62,6 +62,7 @@ CMDS = {
     "pending" : CMD_PEND,
     "pend" : CMD_PEND,
     "url" : CMD_URL,
+    "loc" : CMD_URL,
     "backup" : CMD_BACKUP,
     "bkup" : CMD_BACKUP,
     "diff" : CMD_DIFF,
@@ -103,6 +104,8 @@ class VC(object):
         if isinstance(cmd, int):
             if isinstance(self.cmds[cmd], types.StringType):
                 cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
+            elif isinstance(self.cmds[cmd], types.TupleType):
+                cmd = "%s %s" % (" ".join(self.cmds[cmd]), " ". join(argv))
             elif isinstance(self.cmds[cmd], types.ListType):
                 isfirst = True
                 for subcmd in self.cmds[cmd]:
@@ -170,17 +173,7 @@ class SVN(VC):
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "revert", "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
-                     "status -u", self.cmdURL, self.cmdBackup, "diff"])
-        
-    def cmdURL(self, argv):
-        try:
-            entries = open(".svn/entries", "ro")
-            for line in entries:
-                if self.RX_URL.search(line):
-                    print line.strip()
-                    break
-        except Exception, e:
-            print "failed to open file:", e
+                     "status -u", ("svnpath",), self.cmdBackup, "diff"])
 
     def cmdBackup(self, argv):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
@@ -190,11 +183,10 @@ class SVN(VC):
                 words = line.split(":")
                 rev = words[1].strip()
                 break
-        path = "backup-%s" % rev
+        path = "backup-r%s" % rev
         path = self.backupFile(path + "%s.diff")
         self.runCmd("diff > %s" % path, [], noexit=True)
         print "Backed up to:", path
-VC.VCS.append(SVN())
 
 
 class HG(VC):
@@ -229,7 +221,6 @@ class HG(VC):
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
         self.runCmd("diff > %s" % path, [], noexit=True)
         print path
-VC.VCS.append(HG())
 
 
 class GIT(VC):
@@ -238,7 +229,6 @@ class GIT(VC):
                     ["status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
                      "URL", "BACKUP", "diff"])
-VC.VCS.append(GIT())
 
 
 class CVS(VC):
@@ -247,7 +237,9 @@ class CVS(VC):
                     ["status", "checkout", "commit", "add", "remove", "log",
                      "update -C", "update", "update", "commit", "SYNC",
                      "PENDING", "URL", "BACKUP", "diff"])
-VC.VCS.append(CVS())
+
+
+VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
 
 if __name__ == '__main__':
