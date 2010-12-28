@@ -4,8 +4,7 @@
 # Ideas:
 #
 # - less a particular file without having to 'check it out'. co in the background
-# - location/path
-# - finish out the root/meta path stuff
+# - use the PAGER
 # - doc cmdline args, do help
 # 
 # - filter out cvs and gits verbose outputs
@@ -14,12 +13,13 @@
 import os, sys, re, types, commands, stat
 
 
-(CMD_STATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG, CMD_REVERT,
- CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL, CMD_BACKUP,
- CMD_DIFF, CMD_TOP) = range(0, 16)
+(CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
+ CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
+ CMD_BACKUP, CMD_DIFF, CMD_TOP) = range(0, 17)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
+    CMD_VSTATUS : "vstatus",
     CMD_CLONE : "clone",
     CMD_COMMIT : "commit",
     CMD_ADD : "add",
@@ -43,6 +43,9 @@ CMDS = {
     "status" : CMD_STATUS,
     "stat" : CMD_STATUS,
     "s" : CMD_STATUS,
+    "vstatus" : CMD_VSTATUS,
+    "vstat" : CMD_VSTATUS,
+    "vs" : CMD_VSTATUS,
     "clone" : CMD_CLONE,
     "co" : CMD_CLONE,
     "commit" : CMD_COMMIT,
@@ -214,8 +217,8 @@ class SVN(VC):
 
     def __init__(self):
         VC.__init__(self, "svn", ".svn", "svn",
-                    ["status", "checkout", "commit", "add", "remove", "log",
-                     "revert", "update", "update", "commit",
+                    ["status", "status",  "checkout", "commit", "add", "remove",
+                     "log", "revert", "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
                      "status -u", ("svnpath",), self.cmdBackup, "diff",
                      self.cmdTop])
@@ -240,8 +243,8 @@ class HG(VC):
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
-                    ["status", "clone", "commit", "add", "remove", "log",
-                     "revert", "update", "pull", "push",
+                    ["status", "status", "clone", "commit", "add", "remove",
+                     "log", "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
                      self.cmdPend, "paths", self.cmdBackup, "diff", self.cmdTop])
@@ -280,7 +283,7 @@ class HG(VC):
 class GIT(VC):
     def __init__(self):
         VC.__init__(self, "git", ".git", "git",
-                    ["status", "clone", "commit", "add", "rm", "log",
+                    ["status", "status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
                      "URL", "BACKUP", "diff", self.cmdTop])
 
@@ -288,9 +291,56 @@ class GIT(VC):
 class CVS(VC):
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
-                    ["status", "checkout", "commit", "add", "remove", "log",
-                     "update -C", "update", "update", "commit", "SYNC",
-                     "PENDING", "URL", "BACKUP", "diff", self.cmdTop])
+                    [self.cmdStatus, "status", "checkout", "commit -R", "add -R",
+                     "remove", "log", "update -C", "update", "update",
+                     "commit -R", "SYNC", "PENDING", "URL", "BACKUP", "diff",
+                     self.cmdTop])
+
+    def cmdStatus(self, argv):
+        ret = self.runCmd("status", [], noexit=True, capture_output=True)
+        short = None
+        status = None
+        repo = None
+        pwd = None
+        new = False
+        for line in ret.split("\n"):
+            if line.startswith("=====") or new:
+                if short:
+                    show = self.mapStatus(status)
+                    if show:
+                        if pwd:
+                            name = os.path.join(pwd, short)
+                        else:
+                            name = short
+                        print "%-8s%s" % (show, name)
+                short = None
+                status = None
+                new = False
+            elif line.startswith("File: "):
+                idx = line.index("Status: ")
+                short = line[6:idx-1].strip()
+                status = line[idx+8:].strip()
+            elif line.startswith("cvs status: Examining "):
+                pwd = line.split()[-1:][0].strip()
+                new = True
+        if short:
+            show = self.mapStatus(status)
+            if show:
+                if pwd:
+                    name = os.path.join(pwd, short)
+                else:
+                    name = short
+                print "%-8s%s" % (show, name)
+
+    def mapStatus(self, status):
+        if status == "Locally Added":
+            return "A"
+        elif status == "Locally Modified":
+            return "M"
+        elif status == "Up-to-date":
+            return None
+        else:
+            return status
 
 
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
