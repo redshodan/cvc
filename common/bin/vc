@@ -348,14 +348,21 @@ class CVS(VC):
 
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
-                    [self.cmdStatus, "status", "checkout", "commit -R", "add -R",
-                     "remove", "log", "update -C", "update", "update",
+                    [self.cmdStatus, "status", self.cmdClone, "commit -R",
+                     "add -R", "remove", "log", "update -C", "update", "update",
                      "commit -R", "SYNC", "PENDING", "URL", "BACKUP", "diff",
                      self.cmdTop])
 
     @staticmethod
     def detectByUrl(url):
         return VC._detectByUrl(url, CVS.URLS)
+
+    def cmdClone(self, argv):
+        argv[0] = re.sub(CVS.URLS[0], "", argv[0])
+        nargv = argv[0:1] + ["checkout"]
+        if len(argv) > 1:
+            nargv = nargv + argv[1:]
+        self.runCmd("-d", nargv)
 
     def cmdStatus(self, argv):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
