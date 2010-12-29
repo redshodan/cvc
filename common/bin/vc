@@ -122,18 +122,31 @@ class VC(object):
         self.topdir = None
 
     @staticmethod
-    def detectVC(cmd):
-        if cmd == CMD_CLONE:
-            return VC.detectVCByUrl(cmd)
+    def detectByUrl(url):
+        for vc in VC.VCS:
+            if url[0] == vc.name:
+                return url[1:], vc
+        found = False
+        for vc in VC.VCS:
+            if vc.detectByUrl(url[0]):
+                if found:
+                    print "Ambiguous URL, please specify the VCS by name."
+                    sys.exit(1)
+                found = True
+                ret = url, vc
+        if found:
+            return ret
         else:
-            return VC.detectVCByPath()
+            return url, None
 
     @staticmethod
-    def detectVCByUrl(cmd):
-        return
-
+    def _detectByUrl(url, urls):
+        for prefix in urls:
+            if re.search(prefix, url):
+                return True
+    
     @staticmethod
-    def detectVCByPath():
+    def detectByPath():
         def recurseDetectVC(start, vc):
             last = None
             path = start.split(os.sep)
@@ -166,12 +179,6 @@ class VC(object):
                 vc.topdir = top
                 return vc
 
-    def matchURL(self, url):
-        pass
-    
-    def extractURL(self, url):
-        pass
-    
     def testPath(self, start):
         return os.path.exists(os.path.join(start, self.metadir))
 
@@ -250,8 +257,8 @@ class VC(object):
 
 
 class SVN(VC):
-    RX_URL = re.compile("://")
-
+    URLS = ["^svn://", "^svn\\+ssh://", "^file://"]
+    
     def __init__(self):
         VC.__init__(self, "svn", ".svn", "svn",
                     ["status", "status",  "checkout", "commit", "add", "remove",
@@ -259,6 +266,10 @@ class SVN(VC):
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
                      "status -u", ("svnpath",), self.cmdBackup, "diff",
                      self.cmdTop])
+
+    @staticmethod
+    def detectByUrl(url):
+        return VC._detectByUrl(url, SVN.URLS)
 
     def cmdBackup(self, argv):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
@@ -275,24 +286,24 @@ class SVN(VC):
 
 
 class HG(VC):
+    URLS = ["^hg://", "^file://", "^ssh://", "^http[s]?://"]
     RX_TIP = re.compile("^tip[ \t]+.*")
-    URL_PREFIX = "hg://"
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
-                    ["status", "status", "clone", "commit", "add", "remove",
-                     "log", "revert", "update", "pull", "push",
+                    ["status", "status", self.cmdClone, "commit", "add",
+                     "remove", "log", "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
                      self.cmdPend, "paths", self.cmdBackup, "diff", self.cmdTop])
 
-    def matchURL(self, url):
-        if url.startswith(self.URL_PREFIX):
-            return True
-        return False
-    
-    def extractURL(self, url):
-        return url.lstrip(self.URL_PREFIX)
+    @staticmethod
+    def detectByUrl(url):
+        return VC._detectByUrl(url, HG.URLS)
+
+    def cmdClone(self, argv):
+        argv[0] = re.sub(HG.URLS[0], "", argv[0])
+        self.runCmd("clone", argv, True, True)
 
     def cmdPend(self, argv):
         print "Remote pending changesets:"
@@ -318,20 +329,33 @@ class HG(VC):
 
 
 class GIT(VC):
+    URLS = ["^git://", ".*\\.git$", ".*\\.git/$", "^file://", "^ssh://",
+            "^rsync://", "^http[s]?://", "^ftp[s]?://"]
+
     def __init__(self):
         VC.__init__(self, "git", ".git", "git",
                     ["status", "status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
                      "URL", "BACKUP", "diff", self.cmdTop])
 
+    @staticmethod
+    def detectByUrl(url):
+        return VC._detectByUrl(url, GIT.URLS)
+
 
 class CVS(VC):
+    URLS = ["^cvs://"]
+
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
                     [self.cmdStatus, "status", "checkout", "commit -R", "add -R",
                      "remove", "log", "update -C", "update", "update",
                      "commit -R", "SYNC", "PENDING", "URL", "BACKUP", "diff",
                      self.cmdTop])
+
+    @staticmethod
+    def detectByUrl(url):
+        return VC._detectByUrl(url, CVS.URLS)
 
     def cmdStatus(self, argv):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
@@ -382,28 +406,28 @@ class CVS(VC):
 
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
+def doHelp(option, opt_str, value, parser):
+    parser.print_help()
+    print
+    print "Commands:"
+    for group in CMD_GROUPS:
+        print "  ",
+        start = True
+        for cmd in group:
+            if type(cmd) == types.StringType:
+                if start:
+                    sys.stdout.write("%s" % cmd)
+                    start = False
+                else:
+                    sys.stdout.write(", %s" % cmd)
+            else:
+                print " -- ",
+                print CMD_HELP[cmd]
+    sys.exit(1)
 
 def buildParser():
     parser = OptionParser(version=VERSION, description=DESCRIPTION,
                           usage="%prog [options] [cmd]")
-    def doHelp(option, opt_str, value, parser):
-        parser.print_help()
-        print
-        print "Commands:"
-        for group in CMD_GROUPS:
-            print "  ",
-            start = True
-            for cmd in group:
-                if type(cmd) == types.StringType:
-                    if start:
-                        sys.stdout.write("%s" % cmd)
-                        start = False
-                    else:
-                        sys.stdout.write(", %s" % cmd)
-                else:
-                    print " -- ",
-                    print CMD_HELP[cmd]
-        sys.exit(1)
     parser.remove_option("-h")
     parser.add_option("-h", "--help", action="callback", callback=doHelp)
     return parser
@@ -412,18 +436,30 @@ if __name__ == '__main__':
     parser = buildParser()
     (opts, args) = parser.parse_args()
     
-    if len(args) > 1:
+    if len(args) > 0:
         cmd = args[0]
     else:
         cmd = "status"
 
     try:
         cmd = CMDS[cmd]
-        vc = VC.detectVC(cmd)
-        os.chdir(vc.topdir)
+        if cmd == CMD_CLONE:
+            if len(args) > 1:
+                nargs, vc = VC.detectByUrl(args[1:])
+                args = args[0:1] + nargs
+            else:
+                doHelp(None, None, None, parser)
+        else:
+            vc = VC.detectByPath()
         if not vc:
             print "Unable to detect version control system"
             sys.exit(1)
+        if vc.topdir:
+            os.chdir(vc.topdir)
     except IndexError:
-        pass
+        print "Unknown command:", cmd
+        sys.exit(-1)
+    except KeyError:
+        print "Unknown command:", cmd
+        sys.exit(-1)
     vc.runCmd(cmd, args[1:])
