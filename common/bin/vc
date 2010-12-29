@@ -5,7 +5,8 @@
 #
 # - less a particular file without having to 'check it out'. co in the background
 # - use the PAGER
-# - doc cmdline args, do help
+# - use emacs/vim to colorize diffs
+# - do extended help, help topics
 # 
 # - filter out cvs and gits verbose outputs
 #
@@ -444,6 +445,7 @@ class CVS(VC):
 
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
+
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
     print
@@ -471,33 +473,42 @@ def buildParser():
     return parser
 
 if __name__ == '__main__':
+    lookup = True
+    found = False
+    for arg in sys.argv:
+        if not arg.startswith("-"):
+            found = True
+        elif arg == "--":
+            if found:
+                lookup = False
+            break
+
     parser = buildParser()
     (opts, args) = parser.parse_args()
     
-    if len(args) > 0:
+    if len(args) == 1 and arg[0] == "--":
+        cmd = CMD_VSTATUS
+    elif len(args) > 0:
         cmd = args[0]
+        try:
+            if lookup:
+                cmd = CMDS[cmd]
+        except KeyError:
+            pass
     else:
-        cmd = "status"
-
-    try:
-        cmd = CMDS[cmd]
-        if cmd == CMD_CLONE:
-            if len(args) > 1:
-                nargs, vc = VC.detectByUrl(args[1:])
-                args = args[0:1] + nargs
-            else:
-                doHelp(None, None, None, parser)
+        cmd = CMD_STATUS
+    
+    if cmd == CMD_CLONE:
+        if len(args) > 1:
+            nargs, vc = VC.detectByUrl(args[1:])
+            args = args[0:1] + nargs
         else:
-            vc = VC.detectByPath()
-        if not vc:
-            print "Unable to detect version control system"
-            sys.exit(1)
-        if vc.topdir:
-            os.chdir(vc.topdir)
-    except IndexError:
-        print "Unknown command:", cmd
-        sys.exit(-1)
-    except KeyError:
-        print "Unknown command:", cmd
-        sys.exit(-1)
+            doHelp(None, None, None, parser)
+    else:
+        vc = VC.detectByPath()
+    if not vc:
+        print "Unable to detect version control system"
+        sys.exit(1)
+    if vc.topdir:
+        os.chdir(vc.topdir)
     vc.runCmd(cmd, args[1:])
