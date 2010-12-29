@@ -17,7 +17,7 @@ from optparse import OptionParser
 ### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
- CMD_BACKUP, CMD_DIFF, CMD_TOP) = range(0, 17)
+ CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP) = range(0, 18)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
@@ -35,6 +35,7 @@ CMD_NAMES = {
     CMD_PEND : "pend",
     CMD_URL : "url",
     CMD_BACKUP : "backup",
+    CMD_RESTORE : "restore",
     CMD_DIFF : "diff",
     CMD_TOP : "top",
     }
@@ -71,6 +72,8 @@ CMDS = {
     "loc" : CMD_URL,
     "backup" : CMD_BACKUP,
     "bkup" : CMD_BACKUP,
+    "restore" : CMD_RESTORE,
+    "rest" : CMD_RESTORE,
     "diff" : CMD_DIFF,
     "top" : CMD_TOP,
     }
@@ -103,6 +106,7 @@ CMD_HELP = \
     "Show pending updates.",
     "Show the URL of the remote repository.",
     "Backup unchecked in changes.",
+    "Restore backed up changes.",
     "Show the diff of unchecked in changes.",
     "Show the top directory of this checkout.",
 ]
@@ -252,6 +256,21 @@ class VC(object):
                 index = index + 1
         return path.replace("%s", "")
 
+    def listFiles(self, path):
+        files = set()
+        for dirpath, dirnames, filenames in os.walk(path):
+            for name in filenames:
+                files.add(os.path.join(dirpath, name))
+        return files
+
+    def cmdRestore(self, argv):
+        orgset = self.listFiles(self.topdir)
+        os.system("patch -p0 < %s" % argv[0])
+        newset = self.listFiles(self.topdir)
+        newfiles = newset - orgset
+        if len(newfiles):
+            self.runCmd(CMD_ADD, list(newfiles))
+
     def cmdTop(self, argv):
         print self.topdir
 
@@ -262,14 +281,19 @@ class SVN(VC):
     def __init__(self):
         VC.__init__(self, "svn", ".svn", "svn",
                     ["status", "status",  "checkout", "commit", "add", "remove",
-                     "log", "revert", "update", "update", "commit",
+                     "log", self.cmdRevert, "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
-                     "status -u", ("svnpath",), self.cmdBackup, "diff",
-                     self.cmdTop])
+                     "status -u", ("svnpath",), self.cmdBackup, self.cmdRestore,
+                     "diff", self.cmdTop])
 
     @staticmethod
     def detectByUrl(url):
         return VC._detectByUrl(url, SVN.URLS)
+
+    def cmdRevert(self, argv):
+        if len(argv) == 0:
+            argv.append(".")
+        self.runCmd("revert -R", argv)
 
     def cmdBackup(self, argv):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
@@ -295,7 +319,8 @@ class HG(VC):
                      "remove", "log", "revert", "update", "pull", "push",
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
-                     self.cmdPend, "paths", self.cmdBackup, "diff", self.cmdTop])
+                     self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
+                     "diff", self.cmdTop])
 
     @staticmethod
     def detectByUrl(url):
@@ -336,7 +361,7 @@ class GIT(VC):
         VC.__init__(self, "git", ".git", "git",
                     ["status", "status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
-                     "URL", "BACKUP", "diff", self.cmdTop])
+                     "URL", "BACKUP", self.cmdRestore, "diff", self.cmdTop])
 
     @staticmethod
     def detectByUrl(url):
@@ -350,8 +375,8 @@ class CVS(VC):
         VC.__init__(self, "cvs", "CVS", "cvs",
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
                      "add -R", "remove", "log", "update -C", "update", "update",
-                     "commit -R", "SYNC", "PENDING", "URL", "BACKUP", "diff",
-                     self.cmdTop])
+                     "commit -R", "SYNC", "PENDING", "URL", "BACKUP",
+                     self.cmdRestore, "diff -u", self.cmdTop])
 
     @staticmethod
     def detectByUrl(url):
