@@ -72,6 +72,7 @@ CMDS = {
     "loc" : CMD_URL,
     "backup" : CMD_BACKUP,
     "bkup" : CMD_BACKUP,
+    "bkp" : CMD_BACKUP,
     "restore" : CMD_RESTORE,
     "rest" : CMD_RESTORE,
     "diff" : CMD_DIFF,
@@ -350,7 +351,7 @@ class HG(VC):
         ret = self.runCmd("identify -n", [], noexit=True, capture_output=True)
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
         self.runCmd("diff > %s" % path, [], noexit=True)
-        print path
+        print "Backed up to:", path
 
 
 class GIT(VC):
@@ -375,7 +376,7 @@ class CVS(VC):
         VC.__init__(self, "cvs", "CVS", "cvs",
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
                      "add -R", "remove", "log", "update -C", "update", "update",
-                     "commit -R", "SYNC", "PENDING", "URL", "BACKUP",
+                     "commit -R", "SYNC", "PENDING", "URL", self.cmdBackup,
                      self.cmdRestore, "diff -u", self.cmdTop])
 
     @staticmethod
@@ -388,6 +389,11 @@ class CVS(VC):
         if len(argv) > 1:
             nargv = nargv + argv[1:]
         self.runCmd("-d", nargv)
+
+    def cmdBackup(self, argv):
+        path = self.backupFile("backup%s.diff")
+        self.runCmd("diff -u > %s" % path, [], noexit=True, ignore_ret=True)
+        print "Backed up to:", path
 
     def cmdStatus(self, argv):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
