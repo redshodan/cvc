@@ -11,8 +11,10 @@
 #
 
 import os, sys, re, types, commands, stat
+from optparse import OptionParser
 
 
+### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
  CMD_BACKUP, CMD_DIFF, CMD_TOP) = range(0, 17)
@@ -72,6 +74,41 @@ CMDS = {
     "diff" : CMD_DIFF,
     "top" : CMD_TOP,
     }
+
+### Help information
+CMD_GROUPS = []
+for i in range(0, len(CMD_NAMES)):
+    CMD_GROUPS.append([])
+for key,val in CMDS.iteritems():
+    CMD_GROUPS[val].append(key)
+for arr in CMD_GROUPS:
+    arr.sort()
+    arr.reverse()
+    arr.append(CMDS[arr[0]])
+CMD_GROUPS.sort()
+CMD_HELP = \
+[
+    "Show the status of the local checkout.",
+    "Use the underlying VCS command for status without filtering the output.",
+    "Clone or checkout a repository.",
+    "Commit outstanding changes.",
+    "Add a file to the VCS.",
+    "Remove a file from the VCS.",
+    "Show the VCS version log.",
+    "Revert unchecked in changes.",
+    "Update the local checkout against the repository.",
+    "Pull changes from a remote repository.",
+    "Push local changes to a remote repository.",
+    "Synchronize local checkout against a remote repository.",
+    "Show pending updates.",
+    "Show the URL of the remote repository.",
+    "Backup unchecked in changes.",
+    "Show the diff of unchecked in changes.",
+    "Show the top directory of this checkout.",
+]
+VERSION = "0.0"
+DESCRIPTION = \
+    "VC is a common version control system frontend which provides a common interface for different VCS's. The default command is 'status'."
 
 
 class VC(object):
@@ -346,9 +383,37 @@ class CVS(VC):
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
 
+def buildParser():
+    parser = OptionParser(version=VERSION, description=DESCRIPTION,
+                          usage="%prog [options] [cmd]")
+    def doHelp(option, opt_str, value, parser):
+        parser.print_help()
+        print
+        print "Commands:"
+        for group in CMD_GROUPS:
+            print "  ",
+            start = True
+            for cmd in group:
+                if type(cmd) == types.StringType:
+                    if start:
+                        sys.stdout.write("%s" % cmd)
+                        start = False
+                    else:
+                        sys.stdout.write(", %s" % cmd)
+                else:
+                    print " -- ",
+                    print CMD_HELP[cmd]
+        sys.exit(1)
+    parser.remove_option("-h")
+    parser.add_option("-h", "--help", action="callback", callback=doHelp)
+    return parser
+
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        cmd = sys.argv[1]
+    parser = buildParser()
+    (opts, args) = parser.parse_args()
+    
+    if len(args) > 1:
+        cmd = args[0]
     else:
         cmd = "status"
 
@@ -361,4 +426,4 @@ if __name__ == '__main__':
             sys.exit(1)
     except IndexError:
         pass
-    vc.runCmd(cmd, sys.argv[2:])
+    vc.runCmd(cmd, args[1:])
