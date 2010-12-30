@@ -3,13 +3,15 @@
 #
 # Ideas:
 #
-# - less a particular file without having to 'check it out'. co in the background
 # - use the PAGER
 # - use emacs/vim to colorize diffs
 # - do extended help, help topics
-# 
-# - filter out cvs and gits verbose outputs
-#
+# - add config options, env or dotrc
+# - do a mercurial style locate command for other vcs
+# - filter out gits verbose status output
+# - make a status framework so people can map the output format as they like
+# - figure out lighter weight way to list/view files without checking out whole
+#   subtrees. hg, just use hg's library.
 
 import os, sys, re, types, commands, stat
 from optparse import OptionParser
@@ -18,7 +20,7 @@ from optparse import OptionParser
 ### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
- CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP) = range(0, 18)
+ CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST) = range(0, 19)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
@@ -39,7 +41,10 @@ CMD_NAMES = {
     CMD_RESTORE : "restore",
     CMD_DIFF : "diff",
     CMD_TOP : "top",
+    CMD_LIST : "list",
     }
+
+URL_CMDS = [CMD_CLONE, CMD_LIST]
 
 # Yeah a trie would be better, but its really not required and I dont feel like
 # making one, so there.
@@ -78,6 +83,8 @@ CMDS = {
     "rest" : CMD_RESTORE,
     "diff" : CMD_DIFF,
     "top" : CMD_TOP,
+    "list" : CMD_LIST,
+    "ls" : CMD_LIST,
     }
 
 ### Help information
@@ -111,10 +118,11 @@ CMD_HELP = \
     "Restore backed up changes.",
     "Show the diff of unchecked in changes.",
     "Show the top directory of this checkout.",
+    "List contents of repository URL.",
 ]
 VERSION = "0.0"
 DESCRIPTION = \
-    "VC is a common version control system frontend which provides a common interface for different VCS's. The default command is 'status'."
+    "VC is a common version control system frontend which provides a common interface for different VCS's. The default command is 'status'. To prevent interpretation of the command put a '--' before the command or options."
 
 
 class VC(object):
@@ -137,6 +145,7 @@ class VC(object):
             if vc.detectByUrl(url[0]):
                 if found:
                     print "Ambiguous URL, please specify the VCS by name."
+                    print "Use --help for help."
                     sys.exit(1)
                 found = True
                 ret = url, vc
@@ -209,11 +218,11 @@ class VC(object):
                             ret.startswith("y") or ret.startswith("Y")):
                             pass
                         else:
-                            print "Exiting early"
+                            print "Exiting early."
                             sys.exit(-1)
                     if self.runCmd(subcmd, argv, True, ignore_ret=ignore_ret,
                                    capture_output=capture_output) != 0:
-                        print "Command failed, exiting early"
+                        print "Command failed, exiting early."
                 return
             else:
                 self.cmds[cmd](argv)
@@ -286,7 +295,7 @@ class SVN(VC):
                      "log", self.cmdRevert, "update", "update", "commit",
                      [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
                      "status -u", ("svnpath",), self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop])
+                     "diff", self.cmdTop, "list"])
 
     @staticmethod
     def detectByUrl(url):
@@ -322,7 +331,7 @@ class HG(VC):
                      # SYNC
                      [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
                      self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop])
+                     "diff", self.cmdTop, "LIST"])
 
     @staticmethod
     def detectByUrl(url):
@@ -363,7 +372,8 @@ class GIT(VC):
         VC.__init__(self, "git", ".git", "git",
                     ["status", "status", "clone", "commit", "add", "rm", "log",
                      "reset --hard", "pull", "fetch", "push", "SYNC", "PENDING",
-                     "URL", "BACKUP", self.cmdRestore, "diff", self.cmdTop])
+                     "URL", "BACKUP", self.cmdRestore, "diff", self.cmdTop,
+                     "LIST"])
 
     @staticmethod
     def detectByUrl(url):
@@ -378,7 +388,7 @@ class CVS(VC):
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
                      "add -R", "remove", "log", "update -C", "update", "update",
                      "commit -R", "SYNC", "PENDING", "URL", self.cmdBackup,
-                     self.cmdRestore, "diff -u", self.cmdTop])
+                     self.cmdRestore, "diff -u", self.cmdTop, "LIST"])
 
     @staticmethod
     def detectByUrl(url):
@@ -498,7 +508,7 @@ if __name__ == '__main__':
     else:
         cmd = CMD_STATUS
     
-    if cmd == CMD_CLONE:
+    if cmd in URL_CMDS:
         if len(args) > 1:
             nargs, vc = VC.detectByUrl(args[1:])
             args = args[0:1] + nargs
@@ -507,8 +517,9 @@ if __name__ == '__main__':
     else:
         vc = VC.detectByPath()
     if not vc:
-        print "Unable to detect version control system"
+        print "Unable to detect version control system."
+        print "Use --help for help."
         sys.exit(1)
-    if vc.topdir:
+    if cmd == CMD_STATUS and vc.topdir:
         os.chdir(vc.topdir)
     vc.runCmd(cmd, args[1:])
