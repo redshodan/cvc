@@ -386,9 +386,11 @@ class CVS(VC):
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
-                     "add -R", "remove", "log", "update -C", "update", "update",
-                     "commit -R", "SYNC", "PENDING", "URL", self.cmdBackup,
-                     self.cmdRestore, "diff -u", self.cmdTop, "LIST"])
+                     "add", "remove", "log", "update -RCd", "update", "update",
+                     "commit -R",
+                     [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
+                     self.cmdPend, "URL", self.cmdBackup,
+                     self.cmdRestore, "diff -u", self.cmdTop, self.cmdList])
 
     @staticmethod
     def detectByUrl(url):
@@ -400,6 +402,24 @@ class CVS(VC):
         if len(argv) > 1:
             nargv = nargv + argv[1:]
         self.runCmd("-d", nargv)
+
+    def cmdList(self, argv):
+        url = re.sub(CVS.URLS[0], "", argv[0])
+        argv[0] = url
+        nargv = argv[0:1] + ["rls"]
+        if len(argv) > 1:
+            nargv = nargv + argv[1:]
+            self.runCmd("-d", nargv)
+        else:
+            url = url.split("/")
+            l = len(url)
+            for index in range(0, l):
+                nargv[0] = "/".join(url[:(l - index)])
+                if self.runCmd("-d", nargv, noexit=True, ignore_ret=True) == 0:
+                    break
+
+    def cmdPend(self, argv):
+        self.runCmd("-n", ["update"] + argv)
 
     def cmdBackup(self, argv):
         path = self.backupFile("backup%s.diff")
