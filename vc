@@ -1,17 +1,20 @@
 #!/usr/bin/env python
-
 #
-# Ideas:
+# vc: The common Version Control front-end
+# Copyright (C) 2011 James Newton
 #
-# - use the PAGER
-# - use emacs/vim to colorize diffs
-# - do extended help, help topics
-# - add config options, env or dotrc
-# - do a mercurial style locate command for other vcs
-# - filter out gits verbose status output
-# - make a status framework so people can map the output format as they like
-# - figure out lighter weight way to list/view files without checking out whole
-#   subtrees. hg, just use hg's library.
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os, sys, re, types, commands, stat
 from optparse import OptionParser
