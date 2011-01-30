@@ -534,7 +534,8 @@ def doHelp(option, opt_str, value, parser):
 
 def buildParser():
     parser = OptionParser(version=VERSION, description=DESCRIPTION,
-                          usage="%prog [options] [cmd]")
+                          usage="%prog [options] [cmd] [vcs options]")
+    parser.disable_interspersed_args()
     parser.remove_option("-h")
     parser.add_option("-h", "--help", action="callback", callback=doHelp)
     return parser
