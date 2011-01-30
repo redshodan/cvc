@@ -25,6 +25,9 @@ from optparse import OptionParser
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
  CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST) = range(0, 19)
 
+### Command def keywords
+(CMD, MULTI, FULL, IGNORE) = range(0, 4)
+
 CMD_NAMES = {
     CMD_STATUS : "status",
     CMD_VSTATUS : "vstatus",
@@ -137,6 +140,7 @@ class VC(object):
         self.metacmd = metacmd
         self.cmds = cmds
         self.topdir = None
+        self.isfirst = True
 
     @staticmethod
     def detectByUrl(url):
@@ -201,46 +205,75 @@ class VC(object):
         return os.path.exists(os.path.join(start, self.metadir))
 
     def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
-               capture_output=False):
+               capture_output=False, ask=False):
         orgcmd = cmd
-        if isinstance(cmd, int):
-            if isinstance(self.cmds[cmd], types.StringType):
-                cmd = "%s %s %s" % (self.metacmd, self.cmds[cmd], " ".join(argv))
-            elif isinstance(self.cmds[cmd], types.TupleType):
-                cmd = "%s %s" % (" ".join(self.cmds[cmd]), " ". join(argv))
-            elif isinstance(self.cmds[cmd], types.ListType):
-                isfirst = True
-                for subcmd in self.cmds[cmd]:
-                    if isfirst:
-                        isfirst = False
-                        print "Running:", CMD_NAMES[subcmd]
-                    else:
-                        print "\nContinue: %s (Y/n) " % CMD_NAMES[subcmd], 
-                        ret = sys.stdin.readline()
-                        if ((not ret) or (len(ret) == 0) or (ret == "\n") or
-                            ret.startswith("y") or ret.startswith("Y")):
-                            pass
-                        else:
-                            print "Exiting early."
-                            sys.exit(-1)
-                    if self.runCmd(subcmd, argv, True, ignore_ret=ignore_ret,
-                                   capture_output=capture_output) != 0:
-                        print "Command failed, exiting early."
-                return
-            else:
-                self.cmds[cmd](argv)
-                return
-        else:
+        if isinstance(cmd, types.StringType):
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
+        else:
+            if isinstance(cmd, int):
+                cmddef = self.cmds[cmd]
+            else:
+                cmddef = cmd
+            if isinstance(cmddef, types.StringType):
+                cmd = "%s %s %s" % (self.metacmd, cmddef, " ".join(argv))
+            elif isinstance(cmddef, types.DictionaryType):
+                if IGNORE in cmddef.keys():
+                    ignore_ret = cmddef[IGNORE]
+                if CMD in cmddef:
+                    ret = self.runCmd(cmddef[CMD], argv, True,
+                                      ignore_ret=ignore_ret,
+                                      capture_output=capture_output,
+                                      ask=True)
+                    if ret != 0:
+                        print "Command failed, exiting early."
+                    return ret
+                elif FULL in cmddef:
+                    cmd = "%s %s" % (" ".join(cmddef[FULL]),
+                                     " ". join(argv))
+                elif MULTI in cmddef:
+                    for subcmd in cmddef[MULTI]:
+                        ret = self.runCmd(subcmd, argv, True,
+                                          ignore_ret=ignore_ret,
+                                          capture_output=capture_output,
+                                          ask=True)
+                        if ret != 0:
+                            print "Command failed, exiting early."
+                            return ret
+                    return ret
+            elif callable(cmddef):
+                cmddef(argv)
+                return 0
+            else:
+                print "Invalid command type:", cmddef
+                return -1
         cmd = self.filterCmd(cmd, orgcmd)
+        if ask:
+            if self.isfirst:
+                self.isfirst = False
+                print "Running:", cmd
+            else:
+                print "\nContinue: %s (Y/n) " % cmd, 
+                ret = sys.stdin.readline()
+                if ((not ret) or (len(ret) == 0) or (ret == "\n") or
+                    ret.startswith("y") or ret.startswith("Y")):
+                    pass
+                else:
+                    print "Exiting early."
+                    sys.exit(-1)
         if capture_output:
             ret = commands.getstatusoutput(cmd)
+            if (isinstance(ignore_ret, types.ListType) and
+                (ret[0] in ignore_ret)):
+                ret[0] = 0
             if ((not noexit) or ((not ignore_ret) and (ret[0] != 0))):
                 sys.exit(ret[0])
             else:
                 return ret[1]
         else:
             ret = os.system(cmd)
+            if (isinstance(ignore_ret, types.ListType) and
+                (ret in ignore_ret)):
+                ret = 0
             if ((not noexit) or ((not ignore_ret) and (ret != 0))):
                 sys.exit(ret)
             else:
@@ -296,9 +329,9 @@ class SVN(VC):
         VC.__init__(self, "svn", ".svn", "svn",
                     ["status", "status",  "checkout", "commit", "add", "remove",
                      "log", self.cmdRevert, "update", "update", "commit",
-                     [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
-                     "status -u", ("svnpath",), self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop, "list"])
+                     {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
+                     "status -u", {FULL : ("svnpath",)}, self.cmdBackup,
+                     self.cmdRestore, "diff", self.cmdTop, "list"])
 
     @staticmethod
     def detectByUrl(url):
@@ -332,7 +365,8 @@ class HG(VC):
                     ["status", "status", self.cmdClone, "commit", "add",
                      "remove", "log", "revert", "update", "pull", "push",
                      # SYNC
-                     [CMD_STATUS, CMD_PULL, CMD_UPDATE, CMD_COMMIT, CMD_PUSH],
+                     {MULTI : [CMD_STATUS, CMD_PULL, CMD_UPDATE,
+                               {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
                      self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
                      "diff", self.cmdTop, "LIST"])
 
@@ -391,7 +425,7 @@ class CVS(VC):
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
                      "add", "remove", "log", "update -RCd", "update", "update",
                      "commit -R",
-                     [CMD_STATUS, CMD_UPDATE, CMD_COMMIT], # SYNC
+                     {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
                      self.cmdPend, "URL", self.cmdBackup,
                      self.cmdRestore, "diff -u", self.cmdTop, self.cmdList])
 
@@ -543,6 +577,6 @@ if __name__ == '__main__':
         print "Unable to detect version control system."
         print "Use --help for help."
         sys.exit(1)
-    if cmd == CMD_STATUS and vc.topdir:
-        os.chdir(vc.topdir)
+    # if cmd == CMD_STATUS and vc.topdir:
+    #     os.chdir(vc.topdir)
     vc.runCmd(cmd, args[1:])
