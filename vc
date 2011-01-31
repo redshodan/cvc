@@ -310,9 +310,9 @@ class VC(object):
                 files.add(os.path.join(dirpath, name))
         return files
 
-    def cmdRestore(self, argv):
+    def cmdRestore(self, argv, depth=0):
         orgset = self.listFiles(self.topdir)
-        os.system("patch -p0 < %s" % argv[0])
+        os.system("patch -p%d < %s" % (depth, argv[0]))
         newset = self.listFiles(self.topdir)
         newfiles = newset - orgset
         if len(newfiles):
@@ -407,14 +407,29 @@ class GIT(VC):
 
     def __init__(self):
         VC.__init__(self, "git", ".git", "git",
-                    ["status", "status", "clone", "commit -a", "add", "rm",
-                     "log", "reset --hard", "pull", "fetch", "push", "SYNC",
-                     "PENDING", "remote -v show", "BACKUP", self.cmdRestore,
-                     "diff", self.cmdTop, "LIST"])
+                    ["status --porcelain", "status", "clone", "commit -a",
+                     "add", "rm", "log", "reset --hard", "pull", "fetch",
+                     "push",
+                     # SYNC
+                     {MULTI : [CMD_STATUS, CMD_UPDATE,
+                               {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
+                     "PENDING", "remote -v show", self.cmdBackup,
+                     self.cmdRestore, "diff", self.cmdTop, "LIST"])
 
     @staticmethod
     def detectByUrl(url):
         return VC._detectByUrl(url, GIT.URLS)
+
+    def cmdBackup(self, argv):
+        ret = self.runCmd("log --no-color --name-only --oneline -1", [],
+                          noexit=True, capture_output=True)
+        ret = ret.split("\n")[0].split(" ")[0]
+        path = self.backupFile("backup-" + ret + "%s.diff")
+        self.runCmd("diff --no-color > %s" % path, [], noexit=True)
+        print "Backed up to:", path
+
+    def cmdRestore(self, argv):
+        return VC.cmdRestore(self, argv, 1)
 
 
 class CVS(VC):
