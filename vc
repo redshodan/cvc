@@ -18,6 +18,7 @@
 
 import os, sys, re, types, commands, stat
 from optparse import OptionParser
+from ConfigParser import ConfigParser, NoOptionError
 
 
 ### Commands
@@ -92,6 +93,18 @@ CMDS = {
     "list" : CMD_LIST,
     "ls" : CMD_LIST,
     }
+
+### Config defaults
+CFG_SECTIONS = [ "global", "cvs", "git", "hg", "svn"]
+CFG_DEFS = {
+    "global" : {"topdir":"false"},
+    "svn" : {},
+    "hg" : {},
+    "git" : {},
+    "cvs" : {},
+    }
+# The global config object
+cfg = None
 
 ### Help information
 CMD_GROUPS = []
@@ -557,6 +570,50 @@ class CVS(VC):
 VC.VCS.extend([SVN(), HG(), GIT(), CVS()])
 
 
+class VcCfg(ConfigParser):
+    def __init__(self, opts):
+        self.opts = opts
+        ConfigParser.__init__(self)
+
+    def load(self):
+        for secname in CFG_SECTIONS:
+            section = CFG_DEFS[secname]
+            cfg.add_section(secname)
+            for key, val in section.iteritems():
+                cfg.set(secname, key, val)
+        cfg.read(os.path.expanduser(self.opts.config))
+
+    def show(self):
+        print "Config file:", self.opts.config
+        for secname in CFG_SECTIONS:
+            section = CFG_DEFS[secname]
+            print "  [%s]" % secname
+            for key, val in cfg.items(secname):
+                print "   ", "%s:" % key, val
+
+    def doGet(self, vc, key, getter):
+        secname = "global"
+        if vc:
+            secname = vc.name
+        try:
+            val = getter(self, secname, key)
+        except NoOptionError:
+            try:
+                val = getter(self, "global", key)
+            except NoOptionError:
+                val = None
+        return val
+
+    def getStr(self, vc, key):
+        return self.doGet(vc, key, ConfigParser.get)
+    
+    def getInt(self, vc, key):
+        return self.doGet(vc, key, ConfigParser.getint)
+
+    def getBool(self, vc, key):
+        return self.doGet(vc, key, ConfigParser.getboolean)
+
+
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
     print
@@ -582,6 +639,10 @@ def buildParser():
     parser.disable_interspersed_args()
     parser.remove_option("-h")
     parser.add_option("-h", "--help", action="callback", callback=doHelp)
+    parser.add_option("-c", "--config", type="string", default="~/.vcrc",
+                      help="Configuration file to read.")
+    parser.add_option("-p", "--print-cfg", action="store_true", default=False,
+                      help="Print the loaded configuration.")
     return parser
 
 if __name__ == '__main__':
@@ -597,6 +658,11 @@ if __name__ == '__main__':
 
     parser = buildParser()
     (opts, args) = parser.parse_args()
+    cfg = VcCfg(opts)
+    cfg.load()
+    if opts.print_cfg:
+        cfg.show()
+        sys.exit(0)
     
     if len(args) == 1 and arg[0] == "--":
         cmd = CMD_VSTATUS
@@ -622,6 +688,6 @@ if __name__ == '__main__':
         print "Unable to detect version control system."
         print "Use --help for help."
         sys.exit(1)
-    # if cmd == CMD_STATUS and vc.topdir:
-    #     os.chdir(vc.topdir)
+    if cfg.getBool(vc, "topdir") and (cmd == CMD_STATUS) and vc.topdir:
+        os.chdir(vc.topdir)
     vc.runCmd(cmd, args[1:])
