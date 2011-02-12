@@ -24,7 +24,7 @@ from ConfigParser import ConfigParser, NoOptionError
 ### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
- CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST) = range(0, 19)
+ CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND) = range(0, 20)
 
 ### Command def keywords
 (CMD, MULTI, FULL, IGNORE) = range(0, 4)
@@ -49,6 +49,7 @@ CMD_NAMES = {
     CMD_DIFF : "diff",
     CMD_TOP : "top",
     CMD_LIST : "list",
+    CMD_FIND : "find",
     }
 
 URL_CMDS = [CMD_CLONE, CMD_LIST]
@@ -92,6 +93,7 @@ CMDS = {
     "top" : CMD_TOP,
     "list" : CMD_LIST,
     "ls" : CMD_LIST,
+    "find" : CMD_FIND,
     }
 
 ### Config defaults
@@ -138,6 +140,7 @@ CMD_HELP = \
     "Show the diff of unchecked in changes.",
     "Show the top directory of this checkout.",
     "List contents of repository URL.",
+    "Run find and skip VCS files.",
 ]
 VERSION = "0.0"
 DESCRIPTION = \
@@ -334,6 +337,15 @@ class VC(object):
     def cmdTop(self, argv):
         print self.topdir
 
+    def cmdFind(self, argv):
+        if len(argv):
+            args = "'%s'" % "' '".join(argv)
+        else:
+            args = ""
+        cmd = ("find %s | grep -v -e '.*/%s' -e '.*/%s/.*'" %
+               (args, self.metadir, self.metadir))
+        os.system(cmd)
+
 
 class SVN(VC):
     URLS = ["^svn://", "^svn\\+ssh://", "^file://"]
@@ -344,7 +356,7 @@ class SVN(VC):
                      "log", self.cmdRevert, "update", "update", "commit",
                      {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
                      "status -u", {FULL : ("svnpath",)}, self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "list"])
+                     self.cmdRestore, "diff", self.cmdTop, "list", self.cmdFind])
 
     @staticmethod
     def detectByUrl(url):
@@ -381,7 +393,7 @@ class HG(VC):
                      {MULTI : [CMD_STATUS, CMD_PULL, CMD_UPDATE,
                                {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
                      self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop, "LIST"])
+                     "diff", self.cmdTop, "LIST", self.cmdFind])
 
     @staticmethod
     def detectByUrl(url):
@@ -427,7 +439,7 @@ class GIT(VC):
                      {MULTI : [CMD_STATUS, CMD_UPDATE,
                                {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
                      "PENDING", "remote -v show", self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "LIST"])
+                     self.cmdRestore, "diff", self.cmdTop, "LIST", self.cmdFind])
 
     @staticmethod
     def detectByUrl(url):
@@ -455,7 +467,7 @@ class CVS(VC):
                      "commit -R",
                      {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
                      self.cmdPend, self.cmdUrl, self.cmdBackup, self.cmdRestore,
-                     "diff -u", self.cmdTop, self.cmdList])
+                     "diff -u", self.cmdTop, self.cmdList, self.cmdFind])
 
     @staticmethod
     def detectByUrl(url):
