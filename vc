@@ -399,14 +399,27 @@ class SVN(VC):
     
     def __init__(self):
         VC.__init__(self, "svn", ".svn", "svn",
-                    ["status", "status",  "checkout", "commit", "add", "remove",
-                     "log", self.cmdRevert, "update", "update", "commit",
-                     # SYNC
-                     {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
-                               self.cmdSyncCommit]},
-                     "status -u", {FULL : ("svnpath",)}, self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "list", self.cmdFind,
-                     "PSYNC"])
+                    {CMD_STATUS : "status",
+                     CMD_VSTATUS : "status",
+                     CMD_CLONE : "checkout",
+                     CMD_COMMIT : "commit",
+                     CMD_ADD : "add",
+                     CMD_REMOVE : "remove",
+                     CMD_LOG : "log",
+                     CMD_REVERT : self.cmdRevert,
+                     CMD_UPDATE : "update",
+                     CMD_PULL : "update",
+                     CMD_PUSH : "commit",
+                     CMD_SYNC : {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
+                                          self.cmdSyncCommit]},
+                     CMD_PEND : "status -u",
+                     CMD_URL : {FULL : ("svnpath",)},
+                     CMD_BACKUP : self.cmdBackup,
+                     CMD_RESTORE : self.cmdRestore,
+                     CMD_DIFF : "diff",
+                     CMD_TOP : self.cmdTop,
+                     CMD_LIST : "list",
+                     CMD_FIND : self.cmdFind,})
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -438,14 +451,29 @@ class HG(VC):
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
-                    ["status", "status", self.cmdClone, "commit", "add",
-                     "remove", "log", "revert", "update", "pull", "push",
-                     # SYNC
-                     {MULTI : [self.cmdSyncStatus,
-                               {CMD : self.cmdSyncCommit, IGNORE : [256]},
-                               CMD_PULL, CMD_UPDATE, CMD_PUSH]},
-                     self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop, "LIST", self.cmdFind, "PSYNC"])
+                    {CMD_STATUS : "status",
+                     CMD_VSTATUS : "status",
+                     CMD_CLONE : self.cmdClone,
+                     CMD_COMMIT : "commit",
+                     CMD_ADD : "add",
+                     CMD_REMOVE : "remove",
+                     CMD_LOG : "log",
+                     CMD_REVERT : "revert",
+                     CMD_UPDATE : "update",
+                     CMD_PULL : "pull",
+                     CMD_PUSH : "push",
+                     CMD_SYNC : {MULTI :
+                                     [self.cmdSyncStatus,
+                                      {CMD : self.cmdSyncCommit, IGNORE : [256]},
+                                      CMD_PULL, CMD_UPDATE, CMD_PUSH]},
+                     CMD_PEND: self.cmdPend,
+                     CMD_URL : "paths",
+                     CMD_BACKUP : self.cmdBackup,
+                     CMD_RESTORE : self.cmdRestore,
+                     CMD_DIFF : "diff",
+                     CMD_TOP : self.cmdTop,
+                     CMD_LIST : "LIST",
+                     CMD_FIND : self.cmdFind})
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -485,16 +513,29 @@ class GIT(VC):
 
     def __init__(self):
         VC.__init__(self, "git", ".git", "git",
-                    ["status --porcelain", "status", "clone", "commit -a",
-                     "add", "rm", "log", "reset --hard", "pull", "fetch",
-                     "push",
-                     # SYNC
-                     {MULTI : [self.cmdSyncStatus,
-                               {CMD : self.cmdSyncCommit, IGNORE : [256]},
-                               CMD_UPDATE, CMD_PUSH]},
-                     "PENDING", "remote -v show", self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "LIST", self.cmdFind,
-                     "PSYNC"])
+                    {CMD_STATUS : "status --porcelain",
+                     CMD_VSTATUS : "status",
+                     CMD_CLONE : "clone",
+                     CMD_COMMIT : "commit -a",
+                     CMD_ADD : "add",
+                     CMD_REMOVE : "rm",
+                     CMD_LOG : "log",
+                     CMD_REVERT : "reset --hard",
+                     CMD_UPDATE : "pull",
+                     CMD_PULL : "fetch",
+                     CMD_PUSH : "push",
+                     CMD_SYNC : {MULTI :
+                                     [self.cmdSyncStatus,
+                                      {CMD : self.cmdSyncCommit, IGNORE : [256]},
+                                      CMD_UPDATE, CMD_PUSH]},
+                     CMD_PEND : "PENDING",
+                     CMD_URL : "remote -v show",
+                     CMD_BACKUP : self.cmdBackup,
+                     CMD_RESTORE : self.cmdRestore,
+                     CMD_DIFF : "diff",
+                     CMD_TOP : self.cmdTop,
+                     CMD_LIST : "LIST",
+                     CMD_FIND : self.cmdFind,})
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -518,15 +559,27 @@ class CVS(VC):
 
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
-                    [self.cmdStatus, "status", self.cmdClone, "commit -R",
-                     "add", "remove", "log", "update -RCd", "update", "update",
-                     "commit -R",
-                     # SYNC
-                     {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
-                               self.cmdSyncCommit]},
-                     self.cmdPend, self.cmdUrl, self.cmdBackup, self.cmdRestore,
-                     "diff -u", self.cmdTop, self.cmdList, self.cmdFind,
-                     "PSYNC"])
+                    {CMD_STATUS : self.cmdStatus,
+                     CMD_VSTATUS : "status",
+                     CMD_CLONE : self.cmdClone,
+                     CMD_COMMIT : "commit -R",
+                     CMD_ADD : "add",
+                     CMD_REMOVE : "remove",
+                     CMD_LOG : "log",
+                     CMD_REVERT : "update -RCd",
+                     CMD_UPDATE : "update",
+                     CMD_PULL : "update",
+                     CMD_PUSH : "commit -R",
+                     CMD_SYNC : {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
+                                          self.cmdSyncCommit]},
+                     CMD_PEND : self.cmdPend,
+                     CMD_URL : self.cmdUrl,
+                     CMD_BACKUP : self.cmdBackup,
+                     CMD_RESTORE : self.cmdRestore,
+                     CMD_DIFF : "diff -u",
+                     CMD_TOP : self.cmdTop,
+                     CMD_LIST : self.cmdList,
+                     CMD_FIND : self.cmdFind,})
 
     @staticmethod
     def detectByUrl(url):
