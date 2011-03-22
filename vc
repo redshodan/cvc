@@ -24,7 +24,8 @@ from ConfigParser import ConfigParser, NoOptionError
 ### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
- CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND) = range(0, 20)
+ CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND,
+ CMD_PSYNC) = range(0, 21)
 
 ### Command def keywords
 (CMD, MULTI, FULL, IGNORE) = range(0, 4)
@@ -50,6 +51,7 @@ CMD_NAMES = {
     CMD_TOP : "top",
     CMD_LIST : "list",
     CMD_FIND : "find",
+    CMD_PSYNC : "project-sync",
     }
 
 URL_CMDS = [CMD_CLONE, CMD_LIST]
@@ -94,16 +96,19 @@ CMDS = {
     "list" : CMD_LIST,
     "ls" : CMD_LIST,
     "find" : CMD_FIND,
+    "project-sync" : CMD_PSYNC,
+    "psync" : CMD_PSYNC,
     }
 
 ### Config defaults
-CFG_SECTIONS = [ "global", "cvs", "git", "hg", "svn"]
+CFG_SECTIONS = ["global", "cvs", "git", "hg", "svn", "projects"]
 CFG_DEFS = {
     "global" : {"topdir":"false"},
     "svn" : {},
     "hg" : {},
     "git" : {},
     "cvs" : {},
+    "projects" : {},
     }
 # The global config object
 cfg = None
@@ -114,9 +119,22 @@ for i in range(0, len(CMD_NAMES)):
     CMD_GROUPS.append([])
 for key,val in CMDS.iteritems():
     CMD_GROUPS[val].append(key)
+# Sort by size, the hard way just cause
 for arr in CMD_GROUPS:
-    arr.sort()
-    arr.reverse()
+    for idx in range(1, len(arr)):
+        l = len(arr[idx])
+        for ridx in range(idx - 1, -1, -1):
+            rl = len(arr[ridx])
+            if (l < rl):
+                val = arr[idx]
+                del arr[idx]
+                arr[ridx + 1 : ridx + 1] = [val]
+                break
+            elif (ridx == 0) and (l > rl):
+                val = arr[idx]
+                del arr[idx]
+                arr[ridx:ridx] = [val]
+                break
     arr.append(CMDS[arr[0]])
 CMD_GROUPS.sort()
 CMD_HELP = \
@@ -141,6 +159,7 @@ CMD_HELP = \
     "Show the top directory of this checkout.",
     "List contents of repository URL.",
     "Run find and skip VCS files.",
+    "Synchronize all registered projects.",
 ]
 VERSION = "0.0"
 DESCRIPTION = \
@@ -386,7 +405,8 @@ class SVN(VC):
                      {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
                                self.cmdSyncCommit]},
                      "status -u", {FULL : ("svnpath",)}, self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "list", self.cmdFind])
+                     self.cmdRestore, "diff", self.cmdTop, "list", self.cmdFind,
+                     "PSYNC"])
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -425,7 +445,7 @@ class HG(VC):
                                {CMD : self.cmdSyncCommit, IGNORE : [256]},
                                CMD_PULL, CMD_UPDATE, CMD_PUSH]},
                      self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
-                     "diff", self.cmdTop, "LIST", self.cmdFind])
+                     "diff", self.cmdTop, "LIST", self.cmdFind, "PSYNC"])
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -473,7 +493,8 @@ class GIT(VC):
                                {CMD : self.cmdSyncCommit, IGNORE : [256]},
                                CMD_UPDATE, CMD_PUSH]},
                      "PENDING", "remote -v show", self.cmdBackup,
-                     self.cmdRestore, "diff", self.cmdTop, "LIST", self.cmdFind])
+                     self.cmdRestore, "diff", self.cmdTop, "LIST", self.cmdFind,
+                     "PSYNC"])
         self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
@@ -504,7 +525,8 @@ class CVS(VC):
                      {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
                                self.cmdSyncCommit]},
                      self.cmdPend, self.cmdUrl, self.cmdBackup, self.cmdRestore,
-                     "diff -u", self.cmdTop, self.cmdList, self.cmdFind])
+                     "diff -u", self.cmdTop, self.cmdList, self.cmdFind,
+                     "PSYNC"])
 
     @staticmethod
     def detectByUrl(url):
@@ -632,17 +654,17 @@ class VcCfg(ConfigParser):
     def load(self):
         for secname in CFG_SECTIONS:
             section = CFG_DEFS[secname]
-            cfg.add_section(secname)
+            self.add_section(secname)
             for key, val in section.iteritems():
-                cfg.set(secname, key, val)
-        cfg.read(os.path.expanduser(self.opts.config))
+                self.set(secname, key, val)
+        self.read(os.path.expanduser(self.opts.config))
 
     def show(self):
         print "Config file:", self.opts.config
         for secname in CFG_SECTIONS:
             section = CFG_DEFS[secname]
             print "  [%s]" % secname
-            for key, val in cfg.items(secname):
+            for key, val in self.items(secname):
                 print "   ", "%s:" % key, val
 
     def doGet(self, vc, key, getter):
@@ -667,6 +689,13 @@ class VcCfg(ConfigParser):
     def getBool(self, vc, key):
         return self.doGet(vc, key, ConfigParser.getboolean)
 
+def runPSync(argv):
+    for name, path in cfg.items("projects"):
+        print
+        print "Syncing %s..." % name
+        path = os.path.expanduser(path)
+        os.chdir(path)
+        os.system("vc sync")
 
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
@@ -731,8 +760,11 @@ def main():
             pass
     else:
         cmd = CMD_STATUS
-    
-    if cmd in URL_CMDS:
+
+    if cmd == CMD_PSYNC:
+        ret = runPSync(args)
+        sys.exit(ret)
+    elif cmd in URL_CMDS:
         if len(args) > 1:
             nargs, vc = VC.detectByUrl(args[1:])
             args = args[0:1] + nargs
