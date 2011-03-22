@@ -157,6 +157,8 @@ class VC(object):
         self.cmds = cmds
         self.topdir = None
         self.isfirst = True
+        self.status_ignorables = []
+        self.status_clean = False
 
     @staticmethod
     def detectByUrl(url):
@@ -236,7 +238,7 @@ class VC(object):
                 if IGNORE in cmddef.keys():
                     ignore_ret = cmddef[IGNORE]
                 if CMD in cmddef:
-                    ret = self.runCmd(cmddef[CMD], argv, True,
+                    ret = self.runCmd(cmddef[CMD], argv, noexit=True,
                                       ignore_ret=ignore_ret,
                                       capture_output=capture_output,
                                       ask=True)
@@ -248,7 +250,7 @@ class VC(object):
                                      " ". join(argv))
                 elif MULTI in cmddef:
                     for subcmd in cmddef[MULTI]:
-                        ret = self.runCmd(subcmd, argv, True,
+                        ret = self.runCmd(subcmd, argv, noexit=True,
                                           ignore_ret=ignore_ret,
                                           capture_output=capture_output,
                                           ask=True)
@@ -346,6 +348,32 @@ class VC(object):
                (args, self.metadir, self.metadir))
         os.system(cmd)
 
+    def cmdSyncStatus(self, argv):
+        subcmd = self.cmds[CMD_STATUS]
+        if isinstance(subcmd, types.StringType):
+            ret = self.runCmd(subcmd, argv, noexit=True, capture_output=True,
+                              ask=True)
+            arr = []
+            for line in ret.split("\n"):
+                append = False
+                for rx in self.status_ignorables:
+                    if not rx.search(line):
+                        append = True
+                if append:
+                    arr.append(line)
+
+            if len(ret) and len(arr):
+                print ret
+            else:
+                self.status_clean = True
+            return 0
+        else:
+            return self.runCmd(subcmd, argv, noexit=True, ask=True)
+
+    def cmdSyncCommit(self, argv):
+        subcmd = self.cmds[CMD_COMMIT]
+        if not self.status_clean:
+            return self.runCmd(subcmd, argv, noexit=True, ask=True)
 
 class SVN(VC):
     URLS = ["^svn://", "^svn\\+ssh://", "^file://"]
@@ -354,9 +382,12 @@ class SVN(VC):
         VC.__init__(self, "svn", ".svn", "svn",
                     ["status", "status",  "checkout", "commit", "add", "remove",
                      "log", self.cmdRevert, "update", "update", "commit",
-                     {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
+                     # SYNC
+                     {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
+                               self.cmdSyncCommit]},
                      "status -u", {FULL : ("svnpath",)}, self.cmdBackup,
                      self.cmdRestore, "diff", self.cmdTop, "list", self.cmdFind])
+        self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
@@ -390,10 +421,12 @@ class HG(VC):
                     ["status", "status", self.cmdClone, "commit", "add",
                      "remove", "log", "revert", "update", "pull", "push",
                      # SYNC
-                     {MULTI : [CMD_STATUS, CMD_PULL, CMD_UPDATE,
-                               {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
+                     {MULTI : [self.cmdSyncStatus,
+                               {CMD : self.cmdSyncCommit, IGNORE : [256]},
+                               CMD_PULL, CMD_UPDATE, CMD_PUSH]},
                      self.cmdPend, "paths", self.cmdBackup, self.cmdRestore,
                      "diff", self.cmdTop, "LIST", self.cmdFind])
+        self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
@@ -436,10 +469,12 @@ class GIT(VC):
                      "add", "rm", "log", "reset --hard", "pull", "fetch",
                      "push",
                      # SYNC
-                     {MULTI : [CMD_STATUS, CMD_UPDATE,
-                               {CMD : CMD_COMMIT, IGNORE : [256]}, CMD_PUSH]},
+                     {MULTI : [self.cmdSyncStatus,
+                               {CMD : self.cmdSyncCommit, IGNORE : [256]},
+                               CMD_UPDATE, CMD_PUSH]},
                      "PENDING", "remote -v show", self.cmdBackup,
                      self.cmdRestore, "diff", self.cmdTop, "LIST", self.cmdFind])
+        self.status_ignorables.append(re.compile("^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
@@ -465,7 +500,9 @@ class CVS(VC):
                     [self.cmdStatus, "status", self.cmdClone, "commit -R",
                      "add", "remove", "log", "update -RCd", "update", "update",
                      "commit -R",
-                     {MULTI : [CMD_STATUS, CMD_UPDATE, CMD_COMMIT]}, # SYNC
+                     # SYNC
+                     {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
+                               self.cmdSyncCommit]},
                      self.cmdPend, self.cmdUrl, self.cmdBackup, self.cmdRestore,
                      "diff -u", self.cmdTop, self.cmdList, self.cmdFind])
 
@@ -539,6 +576,7 @@ class CVS(VC):
         repo = None
         pwd = None
         new = False
+        count = 0
         for line in ret.split("\n"):
             if line.startswith("=====") or new:
                 if short:
@@ -548,6 +586,7 @@ class CVS(VC):
                             name = os.path.join(pwd, short)
                         else:
                             name = short
+                        count = count + 1
                         print "%-8s%s" % (show, name)
                 short = None
                 status = None
@@ -566,7 +605,10 @@ class CVS(VC):
                     name = os.path.join(pwd, short)
                 else:
                     name = short
+                count = count + 1
                 print "%-8s%s" % (show, name)
+        if count == 0:
+            self.status_clean = True
 
     def mapStatus(self, status):
         if status == "Locally Added":
@@ -657,7 +699,9 @@ def buildParser():
                       help="Print the loaded configuration.")
     return parser
 
-if __name__ == '__main__':
+def main():
+    global parser, cfg
+    
     lookup = True
     found = False
     for arg in sys.argv:
@@ -703,3 +747,9 @@ if __name__ == '__main__':
     if cfg.getBool(vc, "topdir") and (cmd == CMD_STATUS) and vc.topdir:
         os.chdir(vc.topdir)
     vc.runCmd(cmd, args[1:])
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
