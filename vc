@@ -106,7 +106,7 @@ CFG_SECTIONS = ["global", "cvs", "git", "hg", "svn", "projects"]
 CFG_DEFS = {
     "global" : {"topdir":"false"},
     "svn" : {},
-    "hg" : {},
+    "hg" : {"status-topdir":"true"},
     "git" : {},
     "cvs" : {},
     "projects" : {},
@@ -287,7 +287,9 @@ class VC(object):
                             return ret
                     return ret
             elif callable(cmddef):
-                return cmddef(argv)
+                rargs = {"noexit":noexit, "ignore_ret":ignore_ret,
+                         "capture_output":capture_output, "ask":ask}
+                return cmddef(argv, rargs)
             else:
                 print "Invalid command type:", cmddef
                 return -1
@@ -357,20 +359,20 @@ class VC(object):
                 files.add(os.path.join(dirpath, name))
         return files
 
-    def cmdRestore(self, argv, depth=0):
+    def cmdRestore(self, argv, rargs, depth=0):
         orgset = self.listFiles(self.topdir)
         os.system("patch -p%d < %s" % (depth, argv[0]))
         newset = self.listFiles(self.topdir)
         newfiles = newset - orgset
         if len(newfiles):
-            self.runCmd(CMD_ADD, list(newfiles))
+            self.runCmd(CMD_ADD, list(newfiles), **rargs)
         return 0
 
-    def cmdTop(self, argv):
+    def cmdTop(self, argv, rargs):
         print self.topdir
         return 0
 
-    def cmdFind(self, argv):
+    def cmdFind(self, argv, rargs):
         if len(argv):
             args = "'%s'" % "' '".join(argv)
         else:
@@ -379,7 +381,7 @@ class VC(object):
                (args, self.metadir, self.metadir))
         return os.system(cmd)
 
-    def cmdSyncStatus(self, argv):
+    def cmdSyncStatus(self, argv, rargs):
         subcmd = self.cmds[CMD_STATUS]
         if isinstance(subcmd, types.StringType):
             ret = self.runCmd(subcmd, argv, noexit=True, capture_output=True,
@@ -400,12 +402,15 @@ class VC(object):
                 self.status_clean = True
                 return (0, ASK_SAY)
         else:
-            return self.runCmd(subcmd, argv, noexit=True, ask=ASK_ASK)
+            rargs["ask"] = ASK_ASK
+            rargs["noexit"] = True
+            return self.runCmd(subcmd, argv, **rargs)
 
-    def cmdSyncCommit(self, argv):
-        subcmd = self.cmds[CMD_COMMIT]
+    def cmdSyncCommit(self, argv, rargs):
+        rargs["ask"] = ASK_ASK
+        rargs["noexit"] = True
         if not self.status_clean:
-            return self.runCmd(subcmd, argv, noexit=True, ask=ASK_ASK)
+            return self.runCmd(self.cmds[CMD_COMMIT], argv, **rargs)
         else:
             return (0, ASK_SAY)
 
@@ -441,12 +446,12 @@ class SVN(VC):
     def detectByUrl(url):
         return VC._detectByUrl(url, SVN.URLS)
 
-    def cmdRevert(self, argv):
+    def cmdRevert(self, argv, rargs):
         if len(argv) == 0:
             argv.append(".")
-        return self.runCmd("revert -R", argv)
+        return self.runCmd("revert -R", argv, **rargs)
 
-    def cmdBackup(self, argv):
+    def cmdBackup(self, argv, rargs):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
         rev = None
         for line in ret.split("\n"):
@@ -467,7 +472,7 @@ class HG(VC):
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
-                    {CMD_STATUS : "status",
+                    {CMD_STATUS : self.cmdStatus,
                      CMD_VSTATUS : "status",
                      CMD_CLONE : self.cmdClone,
                      CMD_COMMIT : "commit",
@@ -496,11 +501,17 @@ class HG(VC):
     def detectByUrl(url):
         return VC._detectByUrl(url, HG.URLS)
 
-    def cmdClone(self, argv):
-        argv[0] = re.sub(HG.URLS[0], "", argv[0])
-        return self.runCmd("clone", argv, True, True)
+    def cmdStatus(self, argv, rargs):
+        if cfg.getBool(self, "status-topdir"):
+            return self.runCmd("status", argv, **rargs)
+        else:
+            return self.runCmd("status", argv + ["."], **rargs)
 
-    def cmdPend(self, argv):
+    def cmdClone(self, argv, rargs):
+        argv[0] = re.sub(HG.URLS[0], "", argv[0])
+        return self.runCmd("clone", argv, **rargs)
+
+    def cmdPend(self, argv, rargs):
         print "Remote pending changesets:"
         self.runCmd("incoming", argv, True, True)
         print "\nLocal pending changesets:"
@@ -517,7 +528,7 @@ class HG(VC):
             return self.runCmd("log -r %d:tip" % (rev + 1), argv)
         return 0
 
-    def cmdBackup(self, argv):
+    def cmdBackup(self, argv, rargs):
         ret = self.runCmd("identify -n", [], noexit=True, capture_output=True)
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
         ret = self.runCmd("diff > %s" % path, [], noexit=True)
@@ -560,7 +571,7 @@ class GIT(VC):
     def detectByUrl(url):
         return VC._detectByUrl(url, GIT.URLS)
 
-    def cmdBackup(self, argv):
+    def cmdBackup(self, argv, rargs):
         ret = self.runCmd("log --no-color --name-only --oneline -1", [],
                           noexit=True, capture_output=True)
         ret = ret.split("\n")[0].split(" ")[0]
@@ -569,7 +580,7 @@ class GIT(VC):
         print "Backed up to:", path
         return ret
 
-    def cmdRestore(self, argv):
+    def cmdRestore(self, argv, rargs):
         return VC.cmdRestore(self, argv, 1)
 
 
@@ -604,13 +615,13 @@ class CVS(VC):
     def detectByUrl(url):
         return VC._detectByUrl(url, CVS.URLS)
 
-    def cmdClone(self, argv):
+    def cmdClone(self, argv, rargs):
         url = re.sub(CVS.URLS[0], "", argv[0])
         nargv = [url] + ["rls"]
         if len(argv) > 1:
             nargv[1] = "checkout"
             nargv = nargv + argv[1:]
-            return self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv, **rargs)
         else:
             url = url.split("/")
             l = len(url)
@@ -621,14 +632,14 @@ class CVS(VC):
                     break
             nargv[1] = "checkout"
             nargv = nargv + ["/".join(url[(l - index):])]
-            return self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv, **rargs)
 
-    def cmdList(self, argv):
+    def cmdList(self, argv, rargs):
         url = re.sub(CVS.URLS[0], "", argv[0])
         nargv = [url] + ["rls"]
         if len(argv) > 1:
             nargv = nargv + argv[1:]
-            return self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv, **rargs)
         else:
             url = url.split("/")
             l = len(url)
@@ -638,12 +649,12 @@ class CVS(VC):
                                ignore_ret=True) == 0:
                     break
             nargv = nargv + ["/".join(url[(l - index):])]
-            return self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv, **rargs)
 
-    def cmdPend(self, argv):
-        return self.runCmd("-n", ["update"] + argv)
+    def cmdPend(self, argv, rargs):
+        return self.runCmd("-n", ["update"] + argv, **rargs)
 
-    def cmdUrl(self, argv):
+    def cmdUrl(self, argv, rargs):
         frepo = open(os.path.join(self.topdir, "CVS", "Repository"), "r")
         repo = ""
         for line in frepo:
@@ -659,14 +670,14 @@ class CVS(VC):
         print "cvs://" + root + repo
         return 0
         
-    def cmdBackup(self, argv):
+    def cmdBackup(self, argv, rargs):
         path = self.backupFile("backup%s.diff")
         ret = self.runCmd("diff -u > %s" % path, [], noexit=True,
                           ignore_ret=True)
         print "Backed up to:", path
         return ret
 
-    def cmdStatus(self, argv):
+    def cmdStatus(self, argv, rargs):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
         short = None
         status = None
