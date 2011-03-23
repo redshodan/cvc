@@ -25,10 +25,11 @@ from ConfigParser import ConfigParser, NoOptionError
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
  CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND,
- CMD_PSYNC) = range(0, 21)
+ CMD_PSYNC) = range(21)
 
 ### Command def keywords
-(CMD, MULTI, FULL, IGNORE) = range(0, 4)
+(CMD, MULTI, FULL, IGNORE) = range(4)
+(ASK_ASK, ASK_SAY, ASK_NO) = range(3)
 
 CMD_NAMES = {
     CMD_STATUS : "status",
@@ -242,7 +243,7 @@ class VC(object):
         return os.path.exists(os.path.join(start, self.metadir))
 
     def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
-               capture_output=False, ask=False):
+               capture_output=False, ask=ASK_NO):
         orgcmd = cmd
         if isinstance(cmd, types.StringType):
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
@@ -260,31 +261,38 @@ class VC(object):
                     ret = self.runCmd(cmddef[CMD], argv, noexit=True,
                                       ignore_ret=ignore_ret,
                                       capture_output=capture_output,
-                                      ask=True)
-                    if ret != 0:
+                                      ask=ASK_ASK)
+                    if isinstance(ret, types.TupleType):
+                        check = ret[0]
+                    else:
+                        check = ret
+                    if check != 0:
                         print "Command failed, exiting early."
                     return ret
                 elif FULL in cmddef:
                     cmd = "%s %s" % (" ".join(cmddef[FULL]),
                                      " ". join(argv))
                 elif MULTI in cmddef:
+                    subask = ASK_ASK
                     for subcmd in cmddef[MULTI]:
                         ret = self.runCmd(subcmd, argv, noexit=True,
                                           ignore_ret=ignore_ret,
                                           capture_output=capture_output,
-                                          ask=True)
+                                          ask=subask)
+                        subask = ASK_ASK
+                        if isinstance(ret, types.TupleType):
+                            ret, subask = ret
                         if ret != 0:
                             print "Command failed, exiting early."
                             return ret
                     return ret
             elif callable(cmddef):
-                cmddef(argv)
-                return 0
+                return cmddef(argv)
             else:
                 print "Invalid command type:", cmddef
                 return -1
         cmd = self.filterCmd(cmd, orgcmd)
-        if ask:
+        if ask == ASK_ASK:
             if self.isfirst:
                 self.isfirst = False
                 print "Running:", cmd
@@ -297,6 +305,8 @@ class VC(object):
                 else:
                     print "Exiting early."
                     sys.exit(-1)
+        elif ask == ASK_SAY:
+            print "Running:", cmd
         if capture_output:
             ret = commands.getstatusoutput(cmd)
             if (isinstance(ignore_ret, types.ListType) and
@@ -354,9 +364,11 @@ class VC(object):
         newfiles = newset - orgset
         if len(newfiles):
             self.runCmd(CMD_ADD, list(newfiles))
+        return 0
 
     def cmdTop(self, argv):
         print self.topdir
+        return 0
 
     def cmdFind(self, argv):
         if len(argv):
@@ -365,13 +377,13 @@ class VC(object):
             args = ""
         cmd = ("find %s | grep -v -e '.*/%s' -e '.*/%s/.*'" %
                (args, self.metadir, self.metadir))
-        os.system(cmd)
+        return os.system(cmd)
 
     def cmdSyncStatus(self, argv):
         subcmd = self.cmds[CMD_STATUS]
         if isinstance(subcmd, types.StringType):
             ret = self.runCmd(subcmd, argv, noexit=True, capture_output=True,
-                              ask=True)
+                              ask=ASK_ASK)
             arr = []
             for line in ret.split("\n"):
                 append = False
@@ -383,16 +395,19 @@ class VC(object):
 
             if len(ret) and len(arr):
                 print ret
+                return 0
             else:
                 self.status_clean = True
-            return 0
+                return (0, ASK_SAY)
         else:
-            return self.runCmd(subcmd, argv, noexit=True, ask=True)
+            return self.runCmd(subcmd, argv, noexit=True, ask=ASK_ASK)
 
     def cmdSyncCommit(self, argv):
         subcmd = self.cmds[CMD_COMMIT]
         if not self.status_clean:
-            return self.runCmd(subcmd, argv, noexit=True, ask=True)
+            return self.runCmd(subcmd, argv, noexit=True, ask=ASK_ASK)
+        else:
+            return (0, ASK_SAY)
 
 class SVN(VC):
     URLS = ["^svn://", "^svn\\+ssh://", "^file://"]
@@ -429,7 +444,7 @@ class SVN(VC):
     def cmdRevert(self, argv):
         if len(argv) == 0:
             argv.append(".")
-        self.runCmd("revert -R", argv)
+        return self.runCmd("revert -R", argv)
 
     def cmdBackup(self, argv):
         ret = self.runCmd("info", [], noexit=True, capture_output=True)
@@ -441,8 +456,9 @@ class SVN(VC):
                 break
         path = "backup-r%s" % rev
         path = self.backupFile(path + "%s.diff")
-        self.runCmd("diff > %s" % path, [], noexit=True)
+        ret = self.runCmd("diff > %s" % path, [], noexit=True)
         print "Backed up to:", path
+        return ret
 
 
 class HG(VC):
@@ -482,7 +498,7 @@ class HG(VC):
 
     def cmdClone(self, argv):
         argv[0] = re.sub(HG.URLS[0], "", argv[0])
-        self.runCmd("clone", argv, True, True)
+        return self.runCmd("clone", argv, True, True)
 
     def cmdPend(self, argv):
         print "Remote pending changesets:"
@@ -498,13 +514,15 @@ class HG(VC):
                 tip = int(words[-1:][0].split(":")[0])
                 break
         if tip >= rev + 1:
-            self.runCmd("log -r %d:tip" % (rev + 1), argv)
+            return self.runCmd("log -r %d:tip" % (rev + 1), argv)
+        return 0
 
     def cmdBackup(self, argv):
         ret = self.runCmd("identify -n", [], noexit=True, capture_output=True)
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
-        self.runCmd("diff > %s" % path, [], noexit=True)
+        ret = self.runCmd("diff > %s" % path, [], noexit=True)
         print "Backed up to:", path
+        return ret
 
 
 class GIT(VC):
@@ -527,7 +545,7 @@ class GIT(VC):
                      CMD_SYNC : {MULTI :
                                      [self.cmdSyncStatus,
                                       {CMD : self.cmdSyncCommit, IGNORE : [256]},
-                                      CMD_UPDATE, CMD_PUSH]},
+                                      CMD_PULL, CMD_UPDATE, CMD_PUSH]},
                      CMD_PEND : "PENDING",
                      CMD_URL : "remote -v show",
                      CMD_BACKUP : self.cmdBackup,
@@ -547,8 +565,9 @@ class GIT(VC):
                           noexit=True, capture_output=True)
         ret = ret.split("\n")[0].split(" ")[0]
         path = self.backupFile("backup-" + ret + "%s.diff")
-        self.runCmd("diff --no-color > %s" % path, [], noexit=True)
+        ret = self.runCmd("diff --no-color > %s" % path, [], noexit=True)
         print "Backed up to:", path
+        return ret
 
     def cmdRestore(self, argv):
         return VC.cmdRestore(self, argv, 1)
@@ -591,7 +610,7 @@ class CVS(VC):
         if len(argv) > 1:
             nargv[1] = "checkout"
             nargv = nargv + argv[1:]
-            self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv)
         else:
             url = url.split("/")
             l = len(url)
@@ -602,14 +621,14 @@ class CVS(VC):
                     break
             nargv[1] = "checkout"
             nargv = nargv + ["/".join(url[(l - index):])]
-            self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv)
 
     def cmdList(self, argv):
         url = re.sub(CVS.URLS[0], "", argv[0])
         nargv = [url] + ["rls"]
         if len(argv) > 1:
             nargv = nargv + argv[1:]
-            self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv)
         else:
             url = url.split("/")
             l = len(url)
@@ -619,10 +638,10 @@ class CVS(VC):
                                ignore_ret=True) == 0:
                     break
             nargv = nargv + ["/".join(url[(l - index):])]
-            self.runCmd("-d", nargv)
+            return self.runCmd("-d", nargv)
 
     def cmdPend(self, argv):
-        self.runCmd("-n", ["update"] + argv)
+        return self.runCmd("-n", ["update"] + argv)
 
     def cmdUrl(self, argv):
         frepo = open(os.path.join(self.topdir, "CVS", "Repository"), "r")
@@ -638,11 +657,14 @@ class CVS(VC):
             break
         froot.close()
         print "cvs://" + root + repo
+        return 0
         
     def cmdBackup(self, argv):
         path = self.backupFile("backup%s.diff")
-        self.runCmd("diff -u > %s" % path, [], noexit=True, ignore_ret=True)
+        ret = self.runCmd("diff -u > %s" % path, [], noexit=True,
+                          ignore_ret=True)
         print "Backed up to:", path
+        return ret
 
     def cmdStatus(self, argv):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
@@ -684,6 +706,7 @@ class CVS(VC):
                 print "%-8s%s" % (show, name)
         if count == 0:
             self.status_clean = True
+        return 0
 
     def mapStatus(self, status):
         if status == "Locally Added":
@@ -746,9 +769,13 @@ def runPSync(argv):
     for name, path in cfg.items("projects"):
         print
         print "Syncing %s..." % name
-        path = os.path.expanduser(path)
-        os.chdir(path)
-        os.system("vc sync")
+        fpath = os.path.expanduser(path)
+        if not os.path.exists(fpath):
+            print "Invalid path:", path
+            sys.exit(-1)
+        else:
+            os.chdir(fpath)
+            os.system("vc sync")
 
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
