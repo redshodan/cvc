@@ -108,7 +108,7 @@ CFG_DEFS = {
     "svn" : {},
     "hg" : {"status-topdir":"true"},
     "git" : {},
-    "cvs" : {},
+    "cvs" : {"filter-status":"true"},
     "projects" : {},
     }
 # The global config object
@@ -679,6 +679,9 @@ class CVS(VC):
 
     def cmdStatus(self, argv, rargs):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
+        if not cfg.getBool(self, "filter-status"):
+            print ret
+            return 0
         short = None
         status = None
         repo = None
