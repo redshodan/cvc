@@ -383,28 +383,23 @@ class VC(object):
 
     def cmdSyncStatus(self, argv, rargs):
         subcmd = self.cmds[CMD_STATUS]
-        if isinstance(subcmd, types.StringType):
-            ret = self.runCmd(subcmd, argv, noexit=True, capture_output=True,
-                              ask=ASK_ASK)
-            arr = []
-            for line in ret.split("\n"):
-                append = False
-                for rx in self.status_ignorables:
-                    if not rx.search(line):
-                        append = True
-                if append:
-                    arr.append(line)
-
-            if len(ret) and len(arr):
-                print ret
-                return 0
-            else:
-                self.status_clean = True
-                return (0, ASK_SAY)
+        rargs["capture_output"] = True
+        ret = self.runCmd(subcmd, argv, **rargs)
+        arr = []
+        for line in ret.split("\n"):
+            append = True
+            for rx in self.status_ignorables:
+                if rx.search(line):
+                    append = False
+                    break
+            if append:
+                arr.append(line)
+        if len(ret) and len(arr):
+            print ret
+            return 0
         else:
-            rargs["ask"] = ASK_ASK
-            rargs["noexit"] = True
-            return self.runCmd(subcmd, argv, **rargs)
+            self.status_clean = True
+            return (0, ASK_SAY)
 
     def cmdSyncCommit(self, argv, rargs):
         rargs["ask"] = ASK_ASK
@@ -440,7 +435,7 @@ class SVN(VC):
                      CMD_TOP : self.cmdTop,
                      CMD_LIST : "list",
                      CMD_FIND : self.cmdFind,})
-        self.status_ignorables.append(re.compile("^\?.*"))
+        self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
@@ -495,7 +490,7 @@ class HG(VC):
                      CMD_TOP : self.cmdTop,
                      CMD_LIST : "LIST",
                      CMD_FIND : self.cmdFind})
-        self.status_ignorables.append(re.compile("^\?.*"))
+        self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
@@ -565,7 +560,7 @@ class GIT(VC):
                      CMD_TOP : self.cmdTop,
                      CMD_LIST : "LIST",
                      CMD_FIND : self.cmdFind,})
-        self.status_ignorables.append(re.compile("^\?.*"))
+        self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
     def detectByUrl(url):
