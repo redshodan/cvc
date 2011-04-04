@@ -25,7 +25,7 @@ from ConfigParser import ConfigParser, NoOptionError
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
  CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND,
- CMD_PSYNC) = range(21)
+ CMD_PROJ, CMD_HELP) = range(22)
 
 ### Command def keywords
 (CMD, MULTI, FULL, IGNORE) = range(4)
@@ -52,7 +52,8 @@ CMD_NAMES = {
     CMD_TOP : "top",
     CMD_LIST : "list",
     CMD_FIND : "find",
-    CMD_PSYNC : "project-sync",
+    CMD_PROJ : "proj",
+    CMD_HELP : "help",
     }
 
 URL_CMDS = [CMD_CLONE, CMD_LIST]
@@ -97,8 +98,9 @@ CMDS = {
     "list" : CMD_LIST,
     "ls" : CMD_LIST,
     "find" : CMD_FIND,
-    "project-sync" : CMD_PSYNC,
-    "psync" : CMD_PSYNC,
+    "project" : CMD_PROJ,
+    "proj" : CMD_PROJ,
+    "help" : CMD_HELP,
     }
 
 ### Config defaults
@@ -138,30 +140,32 @@ for arr in CMD_GROUPS:
                 break
     arr.append(CMDS[arr[0]])
 CMD_GROUPS.sort()
-CMD_HELP = \
-[
-    "Show the status of the local checkout.",
-    "Use the underlying VCS command for status without filtering the output.",
-    "Clone or checkout a repository.",
-    "Commit outstanding changes.",
-    "Add a file to the VCS.",
-    "Remove a file from the VCS.",
-    "Show the VCS version log.",
-    "Revert unchecked in changes.",
-    "Update the local checkout against the repository.",
-    "Pull changes from a remote repository.",
-    "Push local changes to a remote repository.",
-    "Synchronize local checkout against a remote repository.",
-    "Show pending updates.",
-    "Show the URL of the remote repository.",
-    "Backup unchecked in changes.",
-    "Restore backed up changes.",
-    "Show the diff of unchecked in changes.",
-    "Show the top directory of this checkout.",
-    "List contents of repository URL.",
-    "Run find and skip VCS files.",
-    "Synchronize all registered projects.",
-]
+CMD_HELP_TXT = \
+{
+    CMD_STATUS : "Show the status of the local checkout.",
+    CMD_VSTATUS : "Use the underlying VCS command for status without filtering "
+                  "the output.",
+    CMD_CLONE : "Clone or checkout a repository.",
+    CMD_COMMIT : "Commit outstanding changes.",
+    CMD_ADD : "Add a file to the VCS.",
+    CMD_REMOVE : "Remove a file from the VCS.",
+    CMD_LOG : "Show the VCS version log.",
+    CMD_REVERT : "Revert unchecked in changes.",
+    CMD_UPDATE : "Update the local checkout against the repository.",
+    CMD_PULL : "Pull changes from a remote repository.",
+    CMD_PUSH : "Push local changes to a remote repository.",
+    CMD_SYNC : "Synchronize local checkout against a remote repository.",
+    CMD_PEND : "Show pending updates.",
+    CMD_URL : "Show the URL of the remote repository.",
+    CMD_BACKUP : "Backup unchecked in changes.",
+    CMD_RESTORE : "Restore backed up changes.",
+    CMD_DIFF : "Show the diff of unchecked in changes.",
+    CMD_TOP : "Show the top directory of this checkout.",
+    CMD_LIST : "List contents of repository URL.",
+    CMD_FIND : "Run find and skip VCS files.",
+    CMD_PROJ : "Run any VC command against all registered projects.",
+    CMD_HELP : "Print this help message.",
+}
 VERSION = "0.0"
 DESCRIPTION = \
     "VC is a common version control system frontend which provides a common interface for different VCS's. The default command is 'status'. To prevent interpretation of the command put a '--' before the command or options."
@@ -774,17 +778,19 @@ class VcCfg(ConfigParser):
     def getBool(self, vc, key):
         return self.doGet(vc, key, ConfigParser.getboolean)
 
-def runPSync(argv):
+def runProjectCmd(argv):
     for name, path in cfg.items("projects"):
+        cmd = ["vc"] + argv
+        cmd = " ".join(cmd)
         print
-        print "Syncing %s..." % name
-        fpath = os.path.expanduser(path)
+        print "Running '%s' in %s..." % (cmd, name)
+        fpath = os.path.expanduser(os.path.expandvars(path))
         if not os.path.exists(fpath):
             print "Invalid path:", path
             sys.exit(-1)
         else:
             os.chdir(fpath)
-            os.system("vc sync")
+            os.system(cmd)
 
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
@@ -802,7 +808,7 @@ def doHelp(option, opt_str, value, parser):
                     sys.stdout.write(", %s" % cmd)
             else:
                 print " -- ",
-                print CMD_HELP[cmd]
+                print CMD_HELP_TXT[cmd]
     sys.exit(1)
 
 def buildParser():
@@ -850,8 +856,10 @@ def main():
     else:
         cmd = CMD_STATUS
 
-    if cmd == CMD_PSYNC:
-        ret = runPSync(args)
+    if cmd == CMD_HELP:
+        doHelp(None, None, None, parser)
+    elif cmd == CMD_PROJ:
+        ret = runProjectCmd(args[1:])
         sys.exit(ret)
     elif cmd in URL_CMDS:
         if len(args) > 1:
