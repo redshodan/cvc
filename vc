@@ -108,7 +108,7 @@ CFG_SECTIONS = ["global", "cvs", "git", "hg", "svn", "projects"]
 CFG_DEFS = {
     "global" : {"topdir":"false"},
     "svn" : {},
-    "hg" : {"status-topdir":"true"},
+    "hg" : {"status-topdir":"true", "revert-clean":"false"},
     "git" : {},
     "cvs" : {"filter-status":"true"},
     "projects" : {},
@@ -468,6 +468,7 @@ class SVN(VC):
 class HG(VC):
     URLS = ["^hg://", "^file://", "^ssh://", "^http[s]?://"]
     RX_TIP = re.compile("^tip[ \t]+.*")
+    RX_CSET = re.compile("^changeset:")
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
@@ -478,8 +479,8 @@ class HG(VC):
                      CMD_ADD : "add",
                      CMD_REMOVE : "remove",
                      CMD_LOG : "log",
-                     CMD_REVERT : "revert",
-                     CMD_UPDATE : "update",
+                     CMD_REVERT : self.cmdRevert,
+                     CMD_UPDATE : self.cmdUpdate,
                      CMD_PULL : "pull",
                      CMD_PUSH : "push",
                      CMD_SYNC : {MULTI :
@@ -509,6 +510,33 @@ class HG(VC):
     def cmdClone(self, argv, rargs):
         argv[0] = re.sub(HG.URLS[0], "", argv[0])
         return self.runCmd("clone", argv, **rargs)
+
+    def cmdUpdate(self, argv, rargs):
+        ret = self.runCmd("heads", [], noexit=True, capture_output=True)
+        found = False
+        for line in ret.split("\n"):
+            if HG.RX_CSET.match(line):
+                if found:
+                    return self.cmdMerge(argv, rargs)
+                else:
+                    found = True
+        return self.runCmd("update", argv, **rargs)
+
+    def cmdMerge(self, argv, rargs):
+        ret = self.runCmd("merge", argv, **rargs)
+        if ret == 0:
+            return self.runCmd("ci", argv, **rargs)
+        else:
+            return ret
+    
+    def cmdRevert(self, argv, rargs):
+        if (("-r" not in argv) and cfg.getBool(self, "revert-clean")):
+            ret = self.runCmd("identify", ["-i"], noexit=True,
+                              capture_output=True)
+            ret = ret.strip().rstrip("+")
+            return self.runCmd("update", ["-C", "-r", ret] + argv, **rargs)
+        else:        
+            return self.runCmd("revert", argv, **rargs)
 
     def cmdPend(self, argv, rargs):
         print "Remote pending changesets:"
