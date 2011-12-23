@@ -234,7 +234,7 @@ class VC(object):
                     cur = os.sep.join(path)
                 else:
                     cur = os.sep.join(path[:-idx])
-                if vc.testPath(cur):
+                if cur and len(cur) and vc.testPath(cur):
                     last = cur
                 elif last:
                     top = last
