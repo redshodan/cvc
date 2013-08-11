@@ -311,7 +311,7 @@ class VC(object):
                 else:
                     print "Exiting early."
                     sys.exit(-1)
-        elif ask == ASK_SAY:
+        elif ((ask == ASK_SAY) or cfg.getBool(self, "verbose")):
             print "Running:", cmd
         if capture_output:
             ret = commands.getstatusoutput(cmd)
@@ -365,7 +365,10 @@ class VC(object):
 
     def cmdRestore(self, argv, rargs, depth=0):
         orgset = self.listFiles(self.topdir)
-        os.system("patch -p%d < %s" % (depth, argv[0]))
+        cmd = "patch -p%d < %s" % (depth, argv[0])
+        if cfg.getBool(self, "verbose"):
+            print "Running:", cmd
+        os.system(cmd)
         newset = self.listFiles(self.topdir)
         newfiles = newset - orgset
         if len(newfiles):
@@ -562,6 +565,17 @@ class HG(VC):
         print "Backed up to:", path
         return ret
 
+    def cmdRestore(self, argv, rargs):
+        git = False
+        for line in open(argv[0]):
+            if line.startswith("diff") and "--git" in line:
+                git = True
+                break
+        if git:
+            return VC.cmdRestore(self, argv, rargs, depth=1)
+        else:
+            return VC.cmdRestore(self, argv, rargs)
+
 
 class GIT(VC):
     URLS = ["^git://", ".*\\.git$", ".*\\.git/$", "^file://", "^ssh://",
@@ -608,7 +622,7 @@ class GIT(VC):
         return ret
 
     def cmdRestore(self, argv, rargs):
-        return VC.cmdRestore(self, argv, 1)
+        return VC.cmdRestore(self, argv, rargs, depth=1)
 
 
 class CVS(VC):
@@ -794,7 +808,10 @@ class VcCfg(ConfigParser):
             try:
                 val = getter(self, "global", key)
             except NoOptionError:
-                val = None
+                if hasattr(self.opts, key):
+                    val = getattr(self.opts, key)
+                else:
+                    val = None
         return val
 
     def getStr(self, vc, key):
@@ -849,6 +866,8 @@ def buildParser():
                       help="Configuration file to read.")
     parser.add_option("-p", "--print-cfg", action="store_true", default=False,
                       help="Print the loaded configuration.")
+    parser.add_option("-v", "--verbose", action="store_true", default=False,
+                      help="Display commands as they are run.")
     return parser
 
 def main():
