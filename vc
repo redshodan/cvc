@@ -586,7 +586,7 @@ class GIT(VC):
                     {CMD_STATUS : "status --porcelain",
                      CMD_VSTATUS : "status",
                      CMD_CLONE : "clone",
-                     CMD_COMMIT : "commit -a",
+                     CMD_COMMIT : "commit",
                      CMD_ADD : "add",
                      CMD_REMOVE : "rm",
                      CMD_LOG : "log",
