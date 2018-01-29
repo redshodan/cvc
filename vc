@@ -68,7 +68,6 @@ CMDS = {
     "vstat" : CMD_VSTATUS,
     "vs" : CMD_VSTATUS,
     "clone" : CMD_CLONE,
-    "co" : CMD_CLONE,
     "commit" : CMD_COMMIT,
     "com" : CMD_COMMIT,
     "ci" : CMD_COMMIT,
@@ -574,7 +573,7 @@ class HG(VC):
         if git:
             return VC.cmdRestore(self, argv, rargs, depth=1)
         else:
-            return VC.cmdRestore(self, argv, rargs)
+            return VC.cmdRestore(self, argv, rargs, depth=1)
 
 
 class GIT(VC):
@@ -586,7 +585,7 @@ class GIT(VC):
                     {CMD_STATUS : "status --porcelain",
                      CMD_VSTATUS : "status",
                      CMD_CLONE : "clone",
-                     CMD_COMMIT : "commit -a",
+                     CMD_COMMIT : "commit",
                      CMD_ADD : "add",
                      CMD_REMOVE : "rm",
                      CMD_LOG : "log",
