@@ -591,7 +591,7 @@ class GIT(VC):
                      CMD_LOG : "log",
                      CMD_REVERT : "reset --hard",
                      CMD_UPDATE : "pull",
-                     CMD_PULL : "fetch",
+                     CMD_PULL : "pull",
                      CMD_PUSH : "push",
                      CMD_SYNC : {MULTI :
                                      [self.cmdSyncStatus,
