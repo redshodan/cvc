@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 #
 # vc: The common Version Control front-end
 # Copyright (C) 2011 James Newton
@@ -19,22 +19,20 @@
 import os
 import sys
 import re
-import types
-import commands
-import stat
+import subprocess
 from optparse import OptionParser
-from ConfigParser import ConfigParser, NoOptionError
+from configparser import ConfigParser, NoOptionError
 
 
 ### Commands
 (CMD_STATUS, CMD_VSTATUS, CMD_CLONE, CMD_COMMIT, CMD_ADD, CMD_REMOVE, CMD_LOG,
  CMD_REVERT, CMD_UPDATE, CMD_PULL, CMD_PUSH, CMD_SYNC, CMD_PEND, CMD_URL,
  CMD_BACKUP, CMD_RESTORE, CMD_DIFF, CMD_TOP, CMD_LIST, CMD_FIND,
- CMD_PROJ, CMD_HELP) = range(22)
+ CMD_PROJ, CMD_HELP) = list(range(22))
 
 ### Command def keywords
-(CMD, MULTI, FULL, IGNORE) = range(4)
-(ASK_ASK, ASK_SAY, ASK_NO) = range(3)
+(CMD, MULTI, FULL, IGNORE) = list(range(4))
+(ASK_ASK, ASK_SAY, ASK_NO) = list(range(3))
 
 CMD_NAMES = {
     CMD_STATUS: "status",
@@ -120,11 +118,14 @@ CFG_DEFS = {
 # The global config object
 cfg = None
 
+# import pdb
+# pdb.set_trace()
+
 ### Help information
 CMD_GROUPS = []
 for i in range(0, len(CMD_NAMES)):
     CMD_GROUPS.append([])
-for key, val in CMDS.iteritems():
+for key, val in CMDS.items():
     CMD_GROUPS[val].append(key)
 
 # Sort by size, the hard way just cause
@@ -149,8 +150,8 @@ CMD_GROUPS.sort()
 CMD_HELP_TXT = \
 {
     CMD_STATUS: "Show the status of the local checkout.",
-    CMD_VSTATUS: ("Use the underlying VCS command for status without filtering "
-                  "the output."),
+    CMD_VSTATUS: ("Use the underlying VCS command for status without "
+                  "filtering the output."),
     CMD_CLONE: "Clone or checkout a repository.",
     CMD_COMMIT: "Commit outstanding changes.",
     CMD_ADD: "Add a file to the VCS.",
@@ -202,8 +203,8 @@ class VC(object):
         for vc in VC.VCS:
             if vc.detectByUrl(url[0]):
                 if found:
-                    print "Ambiguous URL, please specify the VCS by name."
-                    print "Use --help for help."
+                    print("Ambiguous URL, please specify the VCS by name.")
+                    print("Use --help for help.")
                     sys.exit(1)
                 found = True
                 ret = url, vc
@@ -258,29 +259,29 @@ class VC(object):
     def runCmd(self, cmd, argv, noexit=False, ignore_ret=False,
                capture_output=False, ask=ASK_NO):
         orgcmd = cmd
-        if isinstance(cmd, types.StringType):
+        if isinstance(cmd, str):
             cmd = "%s %s %s" % (self.metacmd, cmd, " ".join(argv))
         else:
             if isinstance(cmd, int):
                 cmddef = self.cmds[cmd]
             else:
                 cmddef = cmd
-            if isinstance(cmddef, types.StringType):
+            if isinstance(cmddef, str):
                 cmd = "%s %s %s" % (self.metacmd, cmddef, " ".join(argv))
-            elif isinstance(cmddef, types.DictionaryType):
-                if IGNORE in cmddef.keys():
+            elif isinstance(cmddef, dict):
+                if IGNORE in list(cmddef.keys()):
                     ignore_ret = cmddef[IGNORE]
                 if CMD in cmddef:
                     ret = self.runCmd(cmddef[CMD], argv, noexit=True,
                                       ignore_ret=ignore_ret,
                                       capture_output=capture_output,
                                       ask=ASK_ASK)
-                    if isinstance(ret, types.TupleType):
+                    if isinstance(ret, tuple):
                         check = ret[0]
                     else:
                         check = ret
                     if check != 0:
-                        print "Command failed, exiting early."
+                        print("Command failed, exiting early.")
                     return ret
                 elif FULL in cmddef:
                     cmd = "%s %s" % (" ".join(cmddef[FULL]),
@@ -293,10 +294,10 @@ class VC(object):
                                           capture_output=capture_output,
                                           ask=subask)
                         subask = ASK_ASK
-                        if isinstance(ret, types.TupleType):
+                        if isinstance(ret, tuple):
                             ret, subask = ret
                         if ret != 0:
-                            print "Command failed, exiting early."
+                            print("Command failed, exiting early.")
                             return ret
                     return ret
             elif callable(cmddef):
@@ -304,27 +305,27 @@ class VC(object):
                          "capture_output": capture_output, "ask": ask}
                 return cmddef(argv, rargs)
             else:
-                print "Invalid command type:", cmddef
+                print("Invalid command type:", cmddef)
                 return -1
         cmd = self.filterCmd(cmd, orgcmd)
         if ask == ASK_ASK:
             if self.isfirst:
                 self.isfirst = False
-                print "Running:", cmd
+                print("Running:", cmd)
             else:
-                print "\nContinue: %s (Y/n) " % cmd,
+                print("\nContinue: %s (Y/n) " % cmd, end=' ')
                 ret = sys.stdin.readline()
                 if ((not ret) or (len(ret) == 0) or (ret == "\n") or
                         ret.startswith("y") or ret.startswith("Y")):
                     pass
                 else:
-                    print "Exiting early."
+                    print("Exiting early.")
                     sys.exit(-1)
         elif ((ask == ASK_SAY) or cfg.getBool(self, "verbose")):
-            print "Running:", cmd
+            print("Running:", cmd)
         if capture_output:
-            ret = commands.getstatusoutput(cmd)
-            if (isinstance(ignore_ret, types.ListType) and
+            ret = subprocess.getstatusoutput(cmd)
+            if (isinstance(ignore_ret, list) and
                     (ret[0] in ignore_ret)):
                 ret[0] = 0
             if ((not noexit) or ((not ignore_ret) and (ret[0] != 0))):
@@ -333,7 +334,7 @@ class VC(object):
                 return ret[1]
         else:
             ret = os.system(cmd)
-            if (isinstance(ignore_ret, types.ListType) and
+            if (isinstance(ignore_ret, list) and
                     (ret in ignore_ret)):
                 ret = 0
             if ((not noexit) or ((not ignore_ret) and (ret != 0))):
@@ -354,7 +355,7 @@ class VC(object):
                 tpath = path % ("-%d" % index)
             try:
                 ret = os.stat(tpath)
-            except OSError, e:
+            except OSError as e:
                 if e.errno == 2:
                     return tpath.replace("%s", "")
                 else:
@@ -376,7 +377,7 @@ class VC(object):
         orgset = self.listFiles(self.topdir)
         cmd = "patch -p%d < %s" % (depth, argv[0])
         if cfg.getBool(self, "verbose"):
-            print "Running:", cmd
+            print("Running:", cmd)
         os.system(cmd)
         newset = self.listFiles(self.topdir)
         newfiles = newset - orgset
@@ -385,7 +386,7 @@ class VC(object):
         return 0
 
     def cmdTop(self, argv, rargs):
-        print self.topdir
+        print(self.topdir)
         return 0
 
     def cmdFind(self, argv, rargs):
@@ -411,7 +412,7 @@ class VC(object):
             if append:
                 arr.append(line)
         if len(ret) and len(arr):
-            print ret
+            print(ret)
             return 0
         else:
             self.status_clean = True
@@ -474,7 +475,7 @@ class SVN(VC):
         path = "backup-r%s" % rev
         path = self.backupFile(path + "%s.diff")
         ret = self.runCmd("diff > %s" % path, [], noexit=True)
-        print "Backed up to:", path
+        print("Backed up to:", path)
         return ret
 
 
@@ -552,9 +553,9 @@ class HG(VC):
             return self.runCmd("revert", argv, **rargs)
 
     def cmdPend(self, argv, rargs):
-        print "Remote pending changesets:"
+        print("Remote pending changesets:")
         self.runCmd("incoming", argv, True, True)
-        print "\nLocal pending changesets:"
+        print("\nLocal pending changesets:")
         rev = self.runCmd("identify -n", [], noexit=True,
                           capture_output=True).strip()
         rev = int(rev.rstrip("+"))
@@ -572,7 +573,7 @@ class HG(VC):
         ret = self.runCmd("identify -n", [], noexit=True, capture_output=True)
         path = self.backupFile("backup-r" + ret.strip().rstrip("+") + "%s.diff")
         ret = self.runCmd("diff > %s" % path, [], noexit=True)
-        print "Backed up to:", path
+        print("Backed up to:", path)
         return ret
 
     def cmdRestore(self, argv, rargs):
@@ -628,7 +629,7 @@ class GIT(VC):
         ret = ret.split("\n")[0].split(" ")[0]
         path = self.backupFile("backup-" + ret + "%s.diff")
         ret = self.runCmd("diff --no-color > %s" % path, [], noexit=True)
-        print "Backed up to:", path
+        print("Backed up to:", path)
         return ret
 
     def cmdRestore(self, argv, rargs):
@@ -718,20 +719,20 @@ class CVS(VC):
             root = line.strip()
             break
         froot.close()
-        print "cvs://" + root + repo
+        print("cvs://" + root + repo)
         return 0
 
     def cmdBackup(self, argv, rargs):
         path = self.backupFile("backup%s.diff")
         ret = self.runCmd("diff -u > %s" % path, [], noexit=True,
                           ignore_ret=True)
-        print "Backed up to:", path
+        print("Backed up to:", path)
         return ret
 
     def cmdStatus(self, argv, rargs):
         ret = self.runCmd("status", [], noexit=True, capture_output=True)
         if not cfg.getBool(self, "filter-status"):
-            print ret
+            print(ret)
             return 0
         short = None
         status = None
@@ -749,7 +750,7 @@ class CVS(VC):
                         else:
                             name = short
                         count = count + 1
-                        print "%-8s%s" % (show, name)
+                        print("%-8s%s" % (show, name))
                 short = None
                 status = None
                 new = False
@@ -768,7 +769,7 @@ class CVS(VC):
                 else:
                     name = short
                 count = count + 1
-                print "%-8s%s" % (show, name)
+                print("%-8s%s" % (show, name))
         if count == 0:
             self.status_clean = True
         return 0
@@ -796,17 +797,17 @@ class VcCfg(ConfigParser):
         for secname in CFG_SECTIONS:
             section = CFG_DEFS[secname]
             self.add_section(secname)
-            for key, val in section.iteritems():
+            for key, val in section.items():
                 self.set(secname, key, val)
         self.read(os.path.expanduser(self.opts.config))
 
     def show(self):
-        print "Config file:", self.opts.config
+        print("Config file:", self.opts.config)
         for secname in CFG_SECTIONS:
             section = CFG_DEFS[secname]
-            print "  [%s]" % secname
+            print("  [%s]" % secname)
             for key, val in self.items(secname):
-                print "   ", "%s:" % key, val
+                print("   ", "%s:" % key, val)
 
     def doGet(self, vc, key, getter):
         secname = "global"
@@ -838,11 +839,11 @@ def runProjectCmd(argv):
     for name, path in cfg.items("projects"):
         cmd = ["vc"] + argv
         cmd = " ".join(cmd)
-        print
-        print "Running '%s' in %s..." % (cmd, name)
+        print()
+        print("Running '%s' in %s..." % (cmd, name))
         fpath = os.path.expanduser(os.path.expandvars(path))
         if not os.path.exists(fpath):
-            print "Invalid path:", path
+            print("Invalid path:", path)
             sys.exit(-1)
         else:
             os.chdir(fpath)
@@ -851,21 +852,21 @@ def runProjectCmd(argv):
 
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
-    print
-    print "Commands:"
+    print()
+    print("Commands:")
     for group in CMD_GROUPS:
-        print "  ",
+        print("  ", end=' ')
         start = True
         for cmd in group:
-            if isinstance(cmd, types.StringType):
+            if isinstance(cmd, str):
                 if start:
                     sys.stdout.write("%s" % cmd)
                     start = False
                 else:
                     sys.stdout.write(", %s" % cmd)
             else:
-                print " -- ",
-                print CMD_HELP_TXT[cmd]
+                print(" -- ", end=' ')
+                print(CMD_HELP_TXT[cmd])
     sys.exit(1)
 
 
@@ -931,8 +932,8 @@ def main():
     else:
         vc = VC.detectByPath()
     if not vc:
-        print "Unable to detect version control system."
-        print "Use --help for help."
+        print("Unable to detect version control system.")
+        print("Use --help for help.")
         sys.exit(1)
     if cfg.getBool(vc, "topdir") and (cmd == CMD_STATUS) and vc.topdir:
         os.chdir(vc.topdir)
