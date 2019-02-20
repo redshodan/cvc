@@ -16,7 +16,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys, re, types, commands, stat
+import os
+import sys
+import re
+import types
+import commands
+import stat
 from optparse import OptionParser
 from ConfigParser import ConfigParser, NoOptionError
 
@@ -32,86 +37,86 @@ from ConfigParser import ConfigParser, NoOptionError
 (ASK_ASK, ASK_SAY, ASK_NO) = range(3)
 
 CMD_NAMES = {
-    CMD_STATUS : "status",
-    CMD_VSTATUS : "vstatus",
-    CMD_CLONE : "clone",
-    CMD_COMMIT : "commit",
-    CMD_ADD : "add",
-    CMD_REMOVE : "remove",
-    CMD_LOG : "log",
-    CMD_REVERT : "revert",
-    CMD_UPDATE : "update",
-    CMD_PULL : "pull",
-    CMD_PUSH : "push",
-    CMD_SYNC : "sync",
-    CMD_PEND : "pend",
-    CMD_URL : "url",
-    CMD_BACKUP : "backup",
-    CMD_RESTORE : "restore",
-    CMD_DIFF : "diff",
-    CMD_TOP : "top",
-    CMD_LIST : "list",
-    CMD_FIND : "find",
-    CMD_PROJ : "proj",
-    CMD_HELP : "help",
-    }
+    CMD_STATUS: "status",
+    CMD_VSTATUS: "vstatus",
+    CMD_CLONE: "clone",
+    CMD_COMMIT: "commit",
+    CMD_ADD: "add",
+    CMD_REMOVE: "remove",
+    CMD_LOG: "log",
+    CMD_REVERT: "revert",
+    CMD_UPDATE: "update",
+    CMD_PULL: "pull",
+    CMD_PUSH: "push",
+    CMD_SYNC: "sync",
+    CMD_PEND: "pend",
+    CMD_URL: "url",
+    CMD_BACKUP: "backup",
+    CMD_RESTORE: "restore",
+    CMD_DIFF: "diff",
+    CMD_TOP: "top",
+    CMD_LIST: "list",
+    CMD_FIND: "find",
+    CMD_PROJ: "proj",
+    CMD_HELP: "help",
+}
 
 URL_CMDS = [CMD_CLONE, CMD_LIST]
 
 # Yeah a trie would be better, but its really not required and I dont feel like
 # making one, so there.
 CMDS = {
-    "status" : CMD_STATUS,
-    "stat" : CMD_STATUS,
-    "s" : CMD_STATUS,
-    "vstatus" : CMD_VSTATUS,
-    "vstat" : CMD_VSTATUS,
-    "vs" : CMD_VSTATUS,
-    "clone" : CMD_CLONE,
-    "commit" : CMD_COMMIT,
-    "com" : CMD_COMMIT,
-    "ci" : CMD_COMMIT,
-    "add" : CMD_ADD,
-    "a" : CMD_ADD,
-    "remove" : CMD_REMOVE,
-    "rem" : CMD_REMOVE,
-    "del" : CMD_REMOVE,
-    "log" : CMD_LOG,
-    "revert" : CMD_REVERT,
-    "update" : CMD_UPDATE,
-    "up" : CMD_UPDATE,
-    "pull" : CMD_PULL,
-    "push" : CMD_PUSH,
-    "sync" : CMD_SYNC,
-    "pending" : CMD_PEND,
-    "pend" : CMD_PEND,
-    "url" : CMD_URL,
-    "loc" : CMD_URL,
-    "backup" : CMD_BACKUP,
-    "bkup" : CMD_BACKUP,
-    "bkp" : CMD_BACKUP,
-    "restore" : CMD_RESTORE,
-    "rest" : CMD_RESTORE,
-    "diff" : CMD_DIFF,
-    "top" : CMD_TOP,
-    "list" : CMD_LIST,
-    "ls" : CMD_LIST,
-    "find" : CMD_FIND,
-    "project" : CMD_PROJ,
-    "proj" : CMD_PROJ,
-    "help" : CMD_HELP,
-    }
+    "status": CMD_STATUS,
+    "stat": CMD_STATUS,
+    "s": CMD_STATUS,
+    "vstatus": CMD_VSTATUS,
+    "vstat": CMD_VSTATUS,
+    "vs": CMD_VSTATUS,
+    "clone": CMD_CLONE,
+    "commit": CMD_COMMIT,
+    "com": CMD_COMMIT,
+    "ci": CMD_COMMIT,
+    "add": CMD_ADD,
+    "a": CMD_ADD,
+    "remove": CMD_REMOVE,
+    "rem": CMD_REMOVE,
+    "del": CMD_REMOVE,
+    "log": CMD_LOG,
+    "revert": CMD_REVERT,
+    "update": CMD_UPDATE,
+    "up": CMD_UPDATE,
+    "pull": CMD_PULL,
+    "push": CMD_PUSH,
+    "sync": CMD_SYNC,
+    "pending": CMD_PEND,
+    "pend": CMD_PEND,
+    "url": CMD_URL,
+    "loc": CMD_URL,
+    "backup": CMD_BACKUP,
+    "bkup": CMD_BACKUP,
+    "bkp": CMD_BACKUP,
+    "restore": CMD_RESTORE,
+    "rest": CMD_RESTORE,
+    "diff": CMD_DIFF,
+    "top": CMD_TOP,
+    "list": CMD_LIST,
+    "ls": CMD_LIST,
+    "find": CMD_FIND,
+    "project": CMD_PROJ,
+    "proj": CMD_PROJ,
+    "help": CMD_HELP,
+}
 
 ### Config defaults
 CFG_SECTIONS = ["global", "cvs", "git", "hg", "svn", "projects"]
 CFG_DEFS = {
-    "global" : {"topdir":"false"},
-    "svn" : {},
-    "hg" : {"status-topdir":"true", "revert-clean":"false"},
-    "git" : {},
-    "cvs" : {"filter-status":"true"},
-    "projects" : {},
-    }
+    "global": {"topdir": "false"},
+    "svn": {},
+    "hg": {"status-topdir": "true", "revert-clean": "false"},
+    "git": {},
+    "cvs": {"filter-status": "true"},
+    "projects": {},
+}
 # The global config object
 cfg = None
 
@@ -119,8 +124,9 @@ cfg = None
 CMD_GROUPS = []
 for i in range(0, len(CMD_NAMES)):
     CMD_GROUPS.append([])
-for key,val in CMDS.iteritems():
+for key, val in CMDS.iteritems():
     CMD_GROUPS[val].append(key)
+
 # Sort by size, the hard way just cause
 for arr in CMD_GROUPS:
     for idx in range(1, len(arr)):
@@ -130,7 +136,7 @@ for arr in CMD_GROUPS:
             if (l < rl):
                 val = arr[idx]
                 del arr[idx]
-                arr[ridx + 1 : ridx + 1] = [val]
+                arr[ridx + 1: ridx + 1] = [val]
                 break
             elif (ridx == 0) and (l > rl):
                 val = arr[idx]
@@ -138,36 +144,40 @@ for arr in CMD_GROUPS:
                 arr[ridx:ridx] = [val]
                 break
     arr.append(CMDS[arr[0]])
+
 CMD_GROUPS.sort()
 CMD_HELP_TXT = \
 {
-    CMD_STATUS : "Show the status of the local checkout.",
-    CMD_VSTATUS : "Use the underlying VCS command for status without filtering "
-                  "the output.",
-    CMD_CLONE : "Clone or checkout a repository.",
-    CMD_COMMIT : "Commit outstanding changes.",
-    CMD_ADD : "Add a file to the VCS.",
-    CMD_REMOVE : "Remove a file from the VCS.",
-    CMD_LOG : "Show the VCS version log.",
-    CMD_REVERT : "Revert unchecked in changes.",
-    CMD_UPDATE : "Update the local checkout against the repository.",
-    CMD_PULL : "Pull changes from a remote repository.",
-    CMD_PUSH : "Push local changes to a remote repository.",
-    CMD_SYNC : "Synchronize local checkout against a remote repository.",
-    CMD_PEND : "Show pending updates.",
-    CMD_URL : "Show the URL of the remote repository.",
-    CMD_BACKUP : "Backup unchecked in changes.",
-    CMD_RESTORE : "Restore backed up changes.",
-    CMD_DIFF : "Show the diff of unchecked in changes.",
-    CMD_TOP : "Show the top directory of this checkout.",
-    CMD_LIST : "List contents of repository URL.",
-    CMD_FIND : "Run find and skip VCS files.",
-    CMD_PROJ : "Run any VC command against all registered projects.",
-    CMD_HELP : "Print this help message.",
+    CMD_STATUS: "Show the status of the local checkout.",
+    CMD_VSTATUS: ("Use the underlying VCS command for status without filtering "
+                  "the output."),
+    CMD_CLONE: "Clone or checkout a repository.",
+    CMD_COMMIT: "Commit outstanding changes.",
+    CMD_ADD: "Add a file to the VCS.",
+    CMD_REMOVE: "Remove a file from the VCS.",
+    CMD_LOG: "Show the VCS version log.",
+    CMD_REVERT: "Revert unchecked in changes.",
+    CMD_UPDATE: "Update the local checkout against the repository.",
+    CMD_PULL: "Pull changes from a remote repository.",
+    CMD_PUSH: "Push local changes to a remote repository.",
+    CMD_SYNC: "Synchronize local checkout against a remote repository.",
+    CMD_PEND: "Show pending updates.",
+    CMD_URL: "Show the URL of the remote repository.",
+    CMD_BACKUP: "Backup unchecked in changes.",
+    CMD_RESTORE: "Restore backed up changes.",
+    CMD_DIFF: "Show the diff of unchecked in changes.",
+    CMD_TOP: "Show the top directory of this checkout.",
+    CMD_LIST: "List contents of repository URL.",
+    CMD_FIND: "Run find and skip VCS files.",
+    CMD_PROJ: "Run any VC command against all registered projects.",
+    CMD_HELP: "Print this help message.",
 }
 VERSION = "0.0"
 DESCRIPTION = \
-    "VC is a common version control system frontend which provides a common interface for different VCS's. The default command is 'status'. To prevent interpretation of the command put a '--' before the command or options."
+    ("VC is a common version control system frontend which provides a common "
+     "interface for different VCS's. The default command is 'status'. To "
+     "prevent interpretation of the command put a '--' before the command or "
+     "options.")
 
 
 class VC(object):
@@ -207,7 +217,7 @@ class VC(object):
         for prefix in urls:
             if re.search(prefix, url):
                 return True
-    
+
     @staticmethod
     def detectByPath():
         def recurseDetectVC(start, vc):
@@ -290,8 +300,8 @@ class VC(object):
                             return ret
                     return ret
             elif callable(cmddef):
-                rargs = {"noexit":noexit, "ignore_ret":ignore_ret,
-                         "capture_output":capture_output, "ask":ask}
+                rargs = {"noexit": noexit, "ignore_ret": ignore_ret,
+                         "capture_output": capture_output, "ask": ask}
                 return cmddef(argv, rargs)
             else:
                 print "Invalid command type:", cmddef
@@ -302,10 +312,10 @@ class VC(object):
                 self.isfirst = False
                 print "Running:", cmd
             else:
-                print "\nContinue: %s (Y/n) " % cmd, 
+                print "\nContinue: %s (Y/n) " % cmd,
                 ret = sys.stdin.readline()
                 if ((not ret) or (len(ret) == 0) or (ret == "\n") or
-                    ret.startswith("y") or ret.startswith("Y")):
+                        ret.startswith("y") or ret.startswith("Y")):
                     pass
                 else:
                     print "Exiting early."
@@ -315,7 +325,7 @@ class VC(object):
         if capture_output:
             ret = commands.getstatusoutput(cmd)
             if (isinstance(ignore_ret, types.ListType) and
-                (ret[0] in ignore_ret)):
+                    (ret[0] in ignore_ret)):
                 ret[0] = 0
             if ((not noexit) or ((not ignore_ret) and (ret[0] != 0))):
                 sys.exit(ret[0])
@@ -324,7 +334,7 @@ class VC(object):
         else:
             ret = os.system(cmd)
             if (isinstance(ignore_ret, types.ListType) and
-                (ret in ignore_ret)):
+                    (ret in ignore_ret)):
                 ret = 0
             if ((not noexit) or ((not ignore_ret) and (ret != 0))):
                 sys.exit(ret)
@@ -333,7 +343,7 @@ class VC(object):
 
     def filterCmd(self, cmd, orgcmd):
         return cmd
-        
+
     def backupFile(self, path):
         tpath = path
         index = None
@@ -415,32 +425,33 @@ class VC(object):
         else:
             return (0, ASK_SAY)
 
+
 class SVN(VC):
     URLS = ["^svn://", "^svn\\+ssh://", "^file://"]
-    
+
     def __init__(self):
         VC.__init__(self, "svn", ".svn", "svn",
-                    {CMD_STATUS : "status",
-                     CMD_VSTATUS : "status",
-                     CMD_CLONE : "checkout",
-                     CMD_COMMIT : "commit",
-                     CMD_ADD : "add",
-                     CMD_REMOVE : "remove",
-                     CMD_LOG : "log",
-                     CMD_REVERT : self.cmdRevert,
-                     CMD_UPDATE : "update",
-                     CMD_PULL : "update",
-                     CMD_PUSH : "commit",
-                     CMD_SYNC : {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
-                                          self.cmdSyncCommit]},
-                     CMD_PEND : "status -u",
-                     CMD_URL : {FULL : ("svnpath",)},
-                     CMD_BACKUP : self.cmdBackup,
-                     CMD_RESTORE : self.cmdRestore,
-                     CMD_DIFF : "diff",
-                     CMD_TOP : self.cmdTop,
-                     CMD_LIST : "list",
-                     CMD_FIND : self.cmdFind,})
+                    {CMD_STATUS: "status",
+                     CMD_VSTATUS: "status",
+                     CMD_CLONE: "checkout",
+                     CMD_COMMIT: "commit",
+                     CMD_ADD: "add",
+                     CMD_REMOVE: "remove",
+                     CMD_LOG: "log",
+                     CMD_REVERT: self.cmdRevert,
+                     CMD_UPDATE: "update",
+                     CMD_PULL: "update",
+                     CMD_PUSH: "commit",
+                     CMD_SYNC: {MULTI: [self.cmdSyncStatus, CMD_UPDATE,
+                                        self.cmdSyncCommit]},
+                     CMD_PEND: "status -u",
+                     CMD_URL: {FULL: ("svnpath",)},
+                     CMD_BACKUP: self.cmdBackup,
+                     CMD_RESTORE: self.cmdRestore,
+                     CMD_DIFF: "diff",
+                     CMD_TOP: self.cmdTop,
+                     CMD_LIST: "list",
+                     CMD_FIND: self.cmdFind,})
         self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
@@ -474,29 +485,29 @@ class HG(VC):
 
     def __init__(self):
         VC.__init__(self, "hg", ".hg", "hg",
-                    {CMD_STATUS : self.cmdStatus,
-                     CMD_VSTATUS : "status",
-                     CMD_CLONE : self.cmdClone,
-                     CMD_COMMIT : "commit",
-                     CMD_ADD : "add",
-                     CMD_REMOVE : "remove",
-                     CMD_LOG : "log",
-                     CMD_REVERT : self.cmdRevert,
-                     CMD_UPDATE : self.cmdUpdate,
-                     CMD_PULL : "pull",
-                     CMD_PUSH : "push",
-                     CMD_SYNC : {MULTI :
-                                     [self.cmdSyncStatus,
-                                      {CMD : self.cmdSyncCommit, IGNORE : [256]},
-                                      CMD_PULL, CMD_UPDATE, CMD_PUSH]},
+                    {CMD_STATUS: self.cmdStatus,
+                     CMD_VSTATUS: "status",
+                     CMD_CLONE: self.cmdClone,
+                     CMD_COMMIT: "commit",
+                     CMD_ADD: "add",
+                     CMD_REMOVE: "remove",
+                     CMD_LOG: "log",
+                     CMD_REVERT: self.cmdRevert,
+                     CMD_UPDATE: self.cmdUpdate,
+                     CMD_PULL: "pull",
+                     CMD_PUSH: "push",
+                     CMD_SYNC: {MULTI :
+                                [self.cmdSyncStatus,
+                                 {CMD: self.cmdSyncCommit, IGNORE: [256]},
+                                 CMD_PULL, CMD_UPDATE, CMD_PUSH]},
                      CMD_PEND: self.cmdPend,
-                     CMD_URL : "paths",
-                     CMD_BACKUP : self.cmdBackup,
-                     CMD_RESTORE : self.cmdRestore,
-                     CMD_DIFF : "diff",
-                     CMD_TOP : self.cmdTop,
-                     CMD_LIST : "LIST",
-                     CMD_FIND : self.cmdFind})
+                     CMD_URL: "paths",
+                     CMD_BACKUP: self.cmdBackup,
+                     CMD_RESTORE: self.cmdRestore,
+                     CMD_DIFF: "diff",
+                     CMD_TOP: self.cmdTop,
+                     CMD_LIST: "LIST",
+                     CMD_FIND: self.cmdFind})
         self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
@@ -530,14 +541,14 @@ class HG(VC):
             return self.runCmd("ci", argv, **rargs)
         else:
             return ret
-    
+
     def cmdRevert(self, argv, rargs):
         if (("-r" not in argv) and cfg.getBool(self, "revert-clean")):
             ret = self.runCmd("identify", ["-i"], noexit=True,
                               capture_output=True)
             ret = ret.strip().rstrip("+")
             return self.runCmd("update", ["-C", "-r", ret] + argv, **rargs)
-        else:        
+        else:
             return self.runCmd("revert", argv, **rargs)
 
     def cmdPend(self, argv, rargs):
@@ -582,29 +593,29 @@ class GIT(VC):
 
     def __init__(self):
         VC.__init__(self, "git", ".git", "git",
-                    {CMD_STATUS : "status --porcelain",
-                     CMD_VSTATUS : "status",
-                     CMD_CLONE : "clone",
-                     CMD_COMMIT : "commit",
-                     CMD_ADD : "add",
-                     CMD_REMOVE : "rm",
-                     CMD_LOG : "log",
-                     CMD_REVERT : "reset --hard",
-                     CMD_UPDATE : "pull",
-                     CMD_PULL : "pull",
-                     CMD_PUSH : "push",
-                     CMD_SYNC : {MULTI :
-                                     [self.cmdSyncStatus,
-                                      {CMD : self.cmdSyncCommit, IGNORE : [256]},
-                                      CMD_PULL, CMD_UPDATE, CMD_PUSH]},
-                     CMD_PEND : "PENDING",
-                     CMD_URL : "remote -v show",
-                     CMD_BACKUP : self.cmdBackup,
-                     CMD_RESTORE : self.cmdRestore,
-                     CMD_DIFF : "diff",
-                     CMD_TOP : self.cmdTop,
-                     CMD_LIST : "LIST",
-                     CMD_FIND : self.cmdFind,})
+                    {CMD_STATUS: "status --porcelain",
+                     CMD_VSTATUS: "status",
+                     CMD_CLONE: "clone",
+                     CMD_COMMIT: "commit",
+                     CMD_ADD: "add",
+                     CMD_REMOVE: "rm",
+                     CMD_LOG: "log",
+                     CMD_REVERT: "reset --hard",
+                     CMD_UPDATE: "pull",
+                     CMD_PULL: "pull",
+                     CMD_PUSH: "push",
+                     CMD_SYNC: {MULTI:
+                                [self.cmdSyncStatus,
+                                 {CMD: self.cmdSyncCommit, IGNORE: [256]},
+                                 CMD_PULL, CMD_UPDATE, CMD_PUSH]},
+                     CMD_PEND: "PENDING",
+                     CMD_URL: "remote -v show",
+                     CMD_BACKUP: self.cmdBackup,
+                     CMD_RESTORE: self.cmdRestore,
+                     CMD_DIFF: "diff",
+                     CMD_TOP: self.cmdTop,
+                     CMD_LIST: "LIST",
+                     CMD_FIND: self.cmdFind})
         self.status_ignorables.append(re.compile(r"^\?.*"))
 
     @staticmethod
@@ -629,27 +640,27 @@ class CVS(VC):
 
     def __init__(self):
         VC.__init__(self, "cvs", "CVS", "cvs",
-                    {CMD_STATUS : self.cmdStatus,
-                     CMD_VSTATUS : "status",
-                     CMD_CLONE : self.cmdClone,
-                     CMD_COMMIT : "commit -R",
-                     CMD_ADD : "add",
-                     CMD_REMOVE : "remove",
-                     CMD_LOG : "log",
-                     CMD_REVERT : "update -RCd",
-                     CMD_UPDATE : "update",
-                     CMD_PULL : "update",
-                     CMD_PUSH : "commit -R",
-                     CMD_SYNC : {MULTI : [self.cmdSyncStatus, CMD_UPDATE,
-                                          self.cmdSyncCommit]},
-                     CMD_PEND : self.cmdPend,
-                     CMD_URL : self.cmdUrl,
-                     CMD_BACKUP : self.cmdBackup,
-                     CMD_RESTORE : self.cmdRestore,
-                     CMD_DIFF : "diff -u",
-                     CMD_TOP : self.cmdTop,
-                     CMD_LIST : self.cmdList,
-                     CMD_FIND : self.cmdFind,})
+                    {CMD_STATUS: self.cmdStatus,
+                     CMD_VSTATUS: "status",
+                     CMD_CLONE: self.cmdClone,
+                     CMD_COMMIT: "commit -R",
+                     CMD_ADD: "add",
+                     CMD_REMOVE: "remove",
+                     CMD_LOG: "log",
+                     CMD_REVERT: "update -RCd",
+                     CMD_UPDATE: "update",
+                     CMD_PULL: "update",
+                     CMD_PUSH: "commit -R",
+                     CMD_SYNC: {MULTI: [self.cmdSyncStatus, CMD_UPDATE,
+                                        self.cmdSyncCommit]},
+                     CMD_PEND: self.cmdPend,
+                     CMD_URL: self.cmdUrl,
+                     CMD_BACKUP: self.cmdBackup,
+                     CMD_RESTORE: self.cmdRestore,
+                     CMD_DIFF: "diff -u",
+                     CMD_TOP: self.cmdTop,
+                     CMD_LIST: self.cmdList,
+                     CMD_FIND: self.cmdFind})
 
     @staticmethod
     def detectByUrl(url):
@@ -709,7 +720,7 @@ class CVS(VC):
         froot.close()
         print "cvs://" + root + repo
         return 0
-        
+
     def cmdBackup(self, argv, rargs):
         path = self.backupFile("backup%s.diff")
         ret = self.runCmd("diff -u > %s" % path, [], noexit=True,
@@ -744,8 +755,8 @@ class CVS(VC):
                 new = False
             elif line.startswith("File: "):
                 idx = line.index("Status: ")
-                short = line[6:idx-1].strip()
-                status = line[idx+8:].strip()
+                short = line[6:idx - 1].strip()
+                status = line[idx + 8:].strip()
             elif line.startswith("cvs status: Examining "):
                 pwd = line.split()[-1:][0].strip()
                 new = True
@@ -815,12 +826,13 @@ class VcCfg(ConfigParser):
 
     def getStr(self, vc, key):
         return self.doGet(vc, key, ConfigParser.get)
-    
+
     def getInt(self, vc, key):
         return self.doGet(vc, key, ConfigParser.getint)
 
     def getBool(self, vc, key):
         return self.doGet(vc, key, ConfigParser.getboolean)
+
 
 def runProjectCmd(argv):
     for name, path in cfg.items("projects"):
@@ -836,6 +848,7 @@ def runProjectCmd(argv):
             os.chdir(fpath)
             os.system(cmd)
 
+
 def doHelp(option, opt_str, value, parser):
     parser.print_help()
     print
@@ -844,7 +857,7 @@ def doHelp(option, opt_str, value, parser):
         print "  ",
         start = True
         for cmd in group:
-            if type(cmd) == types.StringType:
+            if isinstance(cmd, types.StringType):
                 if start:
                     sys.stdout.write("%s" % cmd)
                     start = False
@@ -854,6 +867,7 @@ def doHelp(option, opt_str, value, parser):
                 print " -- ",
                 print CMD_HELP_TXT[cmd]
     sys.exit(1)
+
 
 def buildParser():
     parser = OptionParser(version=VERSION, description=DESCRIPTION,
@@ -869,9 +883,10 @@ def buildParser():
                       help="Display commands as they are run.")
     return parser
 
+
 def main():
     global parser, cfg
-    
+
     lookup = True
     found = False
     for arg in sys.argv:
@@ -889,7 +904,7 @@ def main():
     if opts.print_cfg:
         cfg.show()
         sys.exit(0)
-    
+
     if len(args) == 1 and arg[0] == "--":
         cmd = CMD_VSTATUS
     elif len(args) > 0:
