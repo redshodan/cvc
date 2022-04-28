@@ -604,7 +604,8 @@ class GIT(VC):
                      CMD_REVERT: "reset --hard",
                      CMD_UPDATE: "pull",
                      CMD_PULL: "pull",
-                     CMD_PUSH: "push",
+                     # CMD_PUSH: "push",
+                     CMD_PUSH: self.cmdPush,
                      CMD_SYNC: {MULTI:
                                 [self.cmdSyncStatus,
                                  {CMD: self.cmdSyncCommit, IGNORE: [256]},
@@ -634,6 +635,27 @@ class GIT(VC):
 
     def cmdRestore(self, argv, rargs):
         return VC.cmdRestore(self, argv, rargs, depth=1)
+
+    def cmdPush(self, argv, rargs):
+        if len(argv) > 0:
+            return self.runCmd("push", argv, **rargs)
+
+        # If pushing with no args, check to see if upstream needs to be set
+        branch = self.getBranch()
+        upstream = self.getBranchUpstream(branch)
+        if len(upstream) == 0:
+            self.runCmd("push --set-upstream origin %s" % branch, [],
+                        capture_output=False)
+        return self.runCmd("push", argv, **rargs)
+
+    # Utilities
+    def getBranch(self):
+        return self.runCmd("name-rev --name-only HEAD", [],
+                           noexit=True, capture_output=True)
+
+    def getBranchUpstream(self, branch):
+        return self.runCmd("config branch.%s.remote" % branch, [],
+            noexit=True, ignore_ret=True, capture_output=True)
 
 
 class CVS(VC):
